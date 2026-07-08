@@ -1,0 +1,25 @@
+workflows:
+  vue-web-build:
+    name: Vue Web Build
+    max_build_duration: 30
+    environment:
+      node: lts
+      npm: default
+    cache:
+      cache_paths:
+        - $CM_BUILD_DIR/node_modules
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+        - pattern: master
+          include: true
+    scripts:
+      - name: Install dependencies
+        script: npm ci
+      - name: Build web app
+        script: npm run build
+    artifacts:
+      - dist/**

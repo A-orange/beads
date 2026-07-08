@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { UploadFilled } from '@element-plus/icons-vue'
 import type { UploadFile } from 'element-plus'
 import type { SelectionRect } from '../utils/imageAnalysis'
@@ -19,7 +19,6 @@ const emit = defineEmits<{
 
 const imageUrl = ref<string | null>(null)
 const imageRef = ref<HTMLImageElement | null>(null)
-const containerRef = ref<HTMLDivElement | null>(null)
 const selection = ref<SelectionRect | null>(null)
 const isDragging = ref(false)
 const dragStart = ref({ x: 0, y: 0 })
@@ -219,7 +218,6 @@ defineExpose({ imageRef, getSelection: toNaturalSelection })
       </div>
 
       <div
-        ref="containerRef"
         class="image-container"
         @mousedown="onMouseDown"
         @mousemove="onMouseMove"
