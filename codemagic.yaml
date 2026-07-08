@@ -17,7 +17,7 @@ workflows:
           include: true
     scripts:
       - name: Install dependencies
-        script: npm ci
+        script: npm install
       - name: Build web app
         script: npm run build
     artifacts:
