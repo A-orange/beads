@@ -1,0 +1,132 @@
+/**
+ * Stardew Valley inspired design system
+ * UI-UX-PRO-Max: craft/hobby + Organic Biophilic + Pixel Art accents
+ */
+@import url('https://fonts.googleapis.com/css2?family=Cabin:wght@400;500;600;700&display=swap');
+
+.mobile-app {
+  /* Stardew palette */
+  --sd-bg: #f5e6c8;
+  --sd-bg-alt: #e8d4a8;
+  --sd-surface: #fff8ee;
+  --sd-surface-wood: #d4bc96;
+  --sd-primary: #5fa044;
+  --sd-primary-dark: #4a7c23;
+  --sd-primary-light: #8bc963;
+  --sd-accent: #e8a838;
+  --sd-accent-dark: #c48820;
+  --sd-copper: #d4834b;
+  --sd-sky: #6ec4db;
+  --sd-text: #3e2723;
+  --sd-text-muted: #7a6a52;
+  --sd-border: #8b6914;
+  --sd-border-light: #c4a882;
+  --sd-shadow: #5c4033;
+  --sd-wood: #6f4e37;
+  --sd-danger: #c44d34;
+
+  /* Legacy aliases used by pixelium variant components */
+  --px-bg: var(--sd-bg);
+  --px-surface: var(--sd-surface);
+  --px-surface-alt: var(--sd-bg-alt);
+  --px-primary: var(--sd-primary);
+  --px-primary-dark: var(--sd-primary-dark);
+  --px-accent: var(--sd-accent);
+  --px-success: var(--sd-primary);
+  --px-success-dark: var(--sd-primary-dark);
+  --px-text: var(--sd-text);
+  --px-text-muted: var(--sd-text-muted);
+  --px-border: var(--sd-border);
+  --px-shadow: var(--sd-shadow);
+
+  --drawer-collapsed: 88px;
+  --drawer-expanded: min(42vh, 320px);
+
+  font-family: 'Fusion Pixel Zh_hans', 'Cabin', 'Noto Sans SC', sans-serif;
+  background-color: var(--sd-bg);
+  background-image:
+    radial-gradient(circle at 20% 10%, rgba(95, 160, 68, 0.08) 0%, transparent 42%),
+    radial-gradient(circle at 85% 80%, rgba(232, 168, 56, 0.1) 0%, transparent 38%),
+    linear-gradient(180deg, var(--sd-bg) 0%, #efe0c4 100%);
+  color: var(--sd-text);
+  overflow: hidden;
+  height: 100dvh;
+  max-height: 100dvh;
+}
+
+.mobile-app .sd-panel {
+  background: var(--sd-surface);
+  border: 3px solid var(--sd-border);
+  border-radius: 4px;
+  box-shadow: 4px 4px 0 0 var(--sd-shadow);
+}
+
+.mobile-app .sd-panel-wood {
+  background: linear-gradient(180deg, var(--sd-surface-wood) 0%, #c9ad82 100%);
+  border: 3px solid var(--sd-wood);
+  border-radius: 4px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 3px 3px 0 0 var(--sd-shadow);
+}
+
+.mobile-app .sd-inset {
+  border: 2px solid var(--sd-border-light);
+  border-radius: 2px;
+  box-shadow: inset 2px 2px 0 0 rgba(92, 64, 51, 0.12);
+  background: var(--sd-bg);
+}
+
+.mobile-app .sd-text-muted {
+  color: var(--sd-text-muted);
+}
+
+.mobile-app .sd-heading {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--sd-text);
+}
+
+.mobile-app .sd-body {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  font-family: 'Cabin', 'Noto Sans SC', sans-serif;
+}
+
+/* pixelium panel aliases */
+.mobile-app .pixel-panel {
+  background: var(--sd-surface);
+  border: 3px solid var(--sd-border);
+  border-radius: 4px;
+  box-shadow: 4px 4px 0 0 var(--sd-shadow);
+}
+
+.mobile-app .pixel-inset {
+  border: 2px solid var(--sd-border-light);
+  box-shadow: inset 2px 2px 0 0 rgba(92, 64, 51, 0.12);
+  background: var(--sd-bg);
+}
+
+.mobile-app .pixel-text-muted {
+  color: var(--sd-text-muted);
+}
+
+.mobile-app .pixel-heading {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.mobile-app .pixel-body {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  font-family: 'Cabin', 'Noto Sans SC', sans-serif;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-app * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

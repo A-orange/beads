@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { UploadFilled } from '@element-plus/icons-vue'
+import { Button, InputNumber } from '@pixelium/web-vue/es'
 import type { UploadFile } from 'element-plus'
 import type { SelectionRect } from '../utils/imageAnalysis'
 
@@ -12,7 +13,21 @@ const props = defineProps<{
   cols: number
   detecting?: boolean
   showAnalyze?: boolean
+  variant?: 'default' | 'pixel'
 }>()
+
+const fileInputRef = ref<HTMLInputElement | null>(null)
+
+function openFilePicker() {
+  fileInputRef.value?.click()
+}
+
+function onPixelFileChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (file?.type.startsWith('image/')) handleFileChange(file)
+  input.value = ''
+}
 
 const emit = defineEmits<{
   analyze: [selection: SelectionRect]
@@ -187,18 +202,62 @@ onUnmounted(() => {
   if (imageUrl.value) URL.revokeObjectURL(imageUrl.value)
 })
 
-defineExpose({ imageRef, getSelection: toNaturalSelection, resetImage, hasImage: () => !!imageUrl.value })
+function setSelectionNatural(rect: SelectionRect) {
+  const img = imageRef.value
+  if (!img?.naturalWidth) return
+
+  const scaleX = img.clientWidth / img.naturalWidth
+  const scaleY = img.clientHeight / img.naturalHeight
+  selection.value = {
+    x: rect.x * scaleX,
+    y: rect.y * scaleY,
+    width: rect.width * scaleX,
+    height: rect.height * scaleY,
+  }
+  emit('selection-change', true)
+}
+
+defineExpose({
+  imageRef,
+  getSelection: toNaturalSelection,
+  resetImage,
+  hasImage: () => !!imageUrl.value,
+  setSelectionNatural,
+})
 </script>
 
 <template>
-  <div class="image-selector" :class="[`mode-${mode}`]">
+  <div class="image-selector" :class="[`mode-${mode}`, variant === 'pixel' ? 'variant-pixel' : '']">
     <div
       v-if="!imageUrl"
       class="upload-area"
       @dragover.prevent
       @drop="onDrop"
     >
+      <template v-if="variant === 'pixel'">
+        <div class="pixel-upload pixel-panel">
+          <input
+            ref="fileInputRef"
+            type="file"
+            accept="image/*"
+            hidden
+            @change="onPixelFileChange"
+          />
+          <svg class="pixel-upload-icon" viewBox="0 0 32 32" aria-hidden="true">
+            <rect x="4" y="20" width="24" height="4" fill="currentColor" />
+            <rect x="14" y="8" width="4" height="12" fill="currentColor" />
+            <rect x="10" y="12" width="4" height="4" fill="currentColor" />
+            <rect x="18" y="12" width="4" height="4" fill="currentColor" />
+          </svg>
+          <p class="upload-title pixel-heading">上传拼豆图纸</p>
+          <p class="upload-desc pixel-body pixel-text-muted">从相册选择图片文件</p>
+          <Button block theme="primary" size="large" @click="openFilePicker">
+            选择图片
+          </Button>
+        </div>
+      </template>
       <el-upload
+        v-else
         drag
         :auto-upload="false"
         :show-file-list="false"
@@ -218,7 +277,17 @@ defineExpose({ imageRef, getSelection: toNaturalSelection, resetImage, hasImage:
         <div class="grid-control-row">
           <label>
             <span>列数</span>
+            <InputNumber
+              v-if="variant === 'pixel'"
+              :model-value="cols"
+              :min="1"
+              :max="300"
+              button-placement="both"
+              size="small"
+              @update:model-value="emit('update:cols', $event ?? 0)"
+            />
             <el-input-number
+              v-else
               :model-value="cols"
               :min="1"
               :max="300"
@@ -228,7 +297,17 @@ defineExpose({ imageRef, getSelection: toNaturalSelection, resetImage, hasImage:
           </label>
           <label>
             <span>行数</span>
+            <InputNumber
+              v-if="variant === 'pixel'"
+              :model-value="rows"
+              :min="1"
+              :max="300"
+              button-placement="both"
+              size="small"
+              @update:model-value="emit('update:rows', $event ?? 0)"
+            />
             <el-input-number
+              v-else
               :model-value="rows"
               :min="1"
               :max="300"
@@ -237,11 +316,32 @@ defineExpose({ imageRef, getSelection: toNaturalSelection, resetImage, hasImage:
             />
           </label>
         </div>
-        <el-button class="detect-btn" :loading="detecting" @click="handleDetect">
+        <Button
+          v-if="variant === 'pixel'"
+          block
+          variant="outline"
+          theme="notice"
+          :loading="detecting"
+          class="detect-btn"
+          @click="handleDetect"
+        >
+          自动识别网格
+        </Button>
+        <el-button v-else class="detect-btn" :loading="detecting" @click="handleDetect">
           自动识别网格
         </el-button>
+        <Button
+          v-if="variant === 'pixel' && showAnalyze !== false"
+          block
+          theme="primary"
+          :disabled="!selection"
+          class="analyze-btn"
+          @click="handleAnalyze"
+        >
+          分析颜色
+        </Button>
         <el-button
-          v-if="showAnalyze !== false"
+          v-else-if="showAnalyze !== false"
           class="analyze-btn"
           type="primary"
           :disabled="!selection"
@@ -255,7 +355,16 @@ defineExpose({ imageRef, getSelection: toNaturalSelection, resetImage, hasImage:
       <p v-else-if="mode === 'adjust'" class="step-hint">对照网格线微调行列数，确保对齐</p>
 
       <div v-if="mode === 'select' && selection" class="reselect-hint">
-        <el-button size="small" text type="primary" @click="selection = null; emit('selection-change', false)">
+        <Button
+          v-if="variant === 'pixel'"
+          size="small"
+          variant="text"
+          theme="primary"
+          @click="selection = null; emit('selection-change', false)"
+        >
+          重新框选
+        </Button>
+        <el-button v-else size="small" text type="primary" @click="selection = null; emit('selection-change', false)">
           重新框选
         </el-button>
       </div>
@@ -471,5 +580,59 @@ defineExpose({ imageRef, getSelection: toNaturalSelection, resetImage, hasImage:
   padding: 2px 6px;
   border-radius: 4px;
   z-index: 1;
+}
+
+/* ===== 像素风格（移动端） ===== */
+.variant-pixel .upload-area {
+  padding: 0;
+}
+
+.variant-pixel .pixel-upload {
+  width: 100%;
+  min-height: 240px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px 20px;
+  text-align: center;
+}
+
+.variant-pixel .pixel-upload-icon {
+  width: 48px;
+  height: 48px;
+  color: var(--px-primary);
+}
+
+.variant-pixel .grid-control-row label span {
+  font-size: 11px;
+  color: var(--px-text);
+  font-weight: 700;
+}
+
+.variant-pixel .step-hint {
+  color: var(--px-text-muted);
+  font-size: 11px;
+}
+
+.variant-pixel .image-container {
+  background: var(--px-bg);
+  border: 3px solid var(--px-border);
+  border-radius: 0;
+  box-shadow: inset 3px 3px 0 0 rgba(45, 27, 46, 0.1);
+}
+
+.variant-pixel .selection-box {
+  border: 2px solid var(--px-primary);
+  background: rgba(79, 142, 247, 0.15);
+}
+
+.variant-pixel .grid-hint {
+  background: var(--px-primary);
+  border: 2px solid var(--px-border);
+  border-radius: 0;
+  font-size: 10px;
+  box-shadow: 2px 2px 0 0 var(--px-shadow);
 }
 </style>

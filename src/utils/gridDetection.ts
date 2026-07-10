@@ -88,12 +88,19 @@ function scoreGridAlignment(profile: Float32Array, cellSize: number): number {
   return score
 }
 
-/** 拼豆图纸单格常见 5~14 像素，在此范围内找最佳周期 */
-function findBeadCellStep(profile: Float32Array, dimension: number): number {
-  const minStep = 5
-  const maxStep = Math.min(14, Math.floor(dimension / 8))
+function cellStepRange(dimension: number) {
+  return {
+    min: Math.max(3, Math.floor(dimension / 120)),
+    max: Math.min(36, Math.floor(dimension / 5)),
+  }
+}
 
-  let bestStep = 8
+/** 根据区域尺寸自适应格宽（24×24 ~ 80×80 常见规格） */
+function findBeadCellStep(profile: Float32Array, dimension: number): number {
+  const { min: minStep, max: maxStep } = cellStepRange(dimension)
+  const fallback = Math.max(minStep, Math.round(dimension / 50))
+
+  let bestStep = fallback
   let bestScore = -Infinity
 
   for (let step = minStep; step <= maxStep; step++) {
@@ -144,9 +151,30 @@ export function estimateBeadGridSize(
 }
 
 export function isPlausibleBeadGrid(width: number, height: number, cols: number, rows: number): boolean {
+  if (cols < 4 || rows < 4 || cols > 120 || rows > 120) return false
   const cellW = width / cols
   const cellH = height / rows
-  return cellW >= 5 && cellW <= 14 && cellH >= 5 && cellH <= 14
+  const { min, max } = cellStepRange(Math.min(width, height))
+  return cellW >= min && cellW <= max && cellH >= min && cellH <= max
+}
+
+/** 接近正方形网格时取整（如 49×49、50×50） */
+export function refineSquareGrid(
+  width: number,
+  height: number,
+  cols: number,
+  rows: number,
+): { cols: number; rows: number } {
+  const aspect = width / height
+  const countDiff = Math.abs(cols - rows)
+  const isSquareish = aspect > 0.82 && aspect < 1.22
+
+  if (isSquareish && countDiff <= 3) {
+    const n = Math.round((cols + rows) / 2)
+    return { cols: n, rows: n }
+  }
+
+  return { cols, rows }
 }
 
 /** 计算区域内网格周期性强度，用于裁剪标题/色卡 */
@@ -189,10 +217,22 @@ export function computeBandPeriodicity(
 
   const smoothed = smoothProfile(subProfile, 2)
   const dimension = axis === 'x' ? regionWidth : regionHeight
+  const { min, max } = cellStepRange(dimension)
   let best = 0
-  for (let period = 5; period <= Math.min(14, Math.floor(dimension / 3)); period++) {
+  for (let period = min; period <= Math.min(max, Math.floor(dimension / 3)); period++) {
     const score = periodCorrelation(smoothed, period)
     if (score > best) best = score
   }
   return best
+}
+
+/** 区域网格信号强度，用于自动检测置信度 */
+export function measureGridStrength(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+): number {
+  const xScore = computeBandPeriodicity(data, width, height, 0, 0, width, height, 'x')
+  const yScore = computeBandPeriodicity(data, width, height, 0, 0, width, height, 'y')
+  return (xScore + yScore) / 2
 }

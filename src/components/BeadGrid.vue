@@ -9,9 +9,12 @@ const props = defineProps<{
   cells: BeadCell[]
   hiddenColors: Set<string>
   cellSize?: number
+  showInfo?: boolean
+  embedded?: boolean
 }>()
 
 const cellSizePx = computed(() => props.cellSize ?? 28)
+const showInfo = computed(() => props.showInfo !== false)
 
 const gridCells = computed(() => {
   const map = new Map<string, BeadCell>()
@@ -35,7 +38,7 @@ function rowLabel(row: number) {
 </script>
 
 <template>
-  <div v-if="cells.length" class="bead-grid-wrapper">
+  <div v-if="cells.length" class="bead-grid-wrapper" :class="{ embedded }">
     <div class="bead-grid" :style="{ '--cell-size': cellSizePx + 'px' }">
       <div class="grid-row header-row">
         <div class="corner-cell" />
@@ -65,7 +68,7 @@ function rowLabel(row: number) {
         </div>
       </div>
     </div>
-    <p class="grid-info">{{ rows }} 行 × {{ cols }} 列，共 {{ cells.length }} 颗豆</p>
+    <p v-if="showInfo" class="grid-info">{{ rows }} 行 × {{ cols }} 列，共 {{ cells.length }} 颗豆</p>
   </div>
   <el-empty v-else description="上传图纸并分析后，此处显示拼豆网格" />
 </template>
@@ -76,9 +79,14 @@ function rowLabel(row: number) {
   padding: 8px;
 }
 
+.bead-grid-wrapper.embedded {
+  overflow: visible;
+  padding: 0;
+}
+
 .bead-grid {
   display: inline-block;
-  border: 1px solid #dcdfe6;
+  border: 2px solid var(--sd-border-light, #c4a882);
   background: #fff;
 }
 

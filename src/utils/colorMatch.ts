@@ -44,7 +44,7 @@ const paletteLab = MARD_PALETTE.map((color) => ({
 
 export function matchMardColor(r: number, g: number, b: number): MardColor {
   const inputLab = rgbToLab(r, g, b)
-  let best = paletteLab[0]
+  let best = paletteLab[0]!
   let minDist = Infinity
 
   for (const entry of paletteLab) {
@@ -55,6 +55,25 @@ export function matchMardColor(r: number, g: number, b: number): MardColor {
     }
   }
 
+  return best.color
+}
+
+/** 多点采样后投票，取出现最多的 MARD 色 */
+export function matchMardColorFromSamples(samples: Array<[number, number, number]>): MardColor {
+  if (samples.length === 0) return MARD_PALETTE[0]!
+
+  const votes = new Map<string, { color: MardColor; count: number }>()
+  for (const [r, g, b] of samples) {
+    const matched = matchMardColor(r, g, b)
+    const entry = votes.get(matched.tag)
+    if (entry) entry.count++
+    else votes.set(matched.tag, { color: matched, count: 1 })
+  }
+
+  let best = [...votes.values()][0]!
+  for (const entry of votes.values()) {
+    if (entry.count > best.count) best = entry
+  }
   return best.color
 }
 

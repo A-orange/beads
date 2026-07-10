@@ -1,15 +1,5 @@
-import { pixelate, snap } from 'fast-pixelizer'
-import { matchMardColor } from './colorMatch'
-import { estimateBeadGridSize, isPlausibleBeadGrid } from './gridDetection'
-import { cropImageData, expandRegion, trimVerticalMargins } from './regionTrim'
+import { matchMardColorFromSamples } from './colorMatch'
 import type { MardColor } from '../data/mard221'
-
-export interface SelectionRect {
-  x: number
-  y: number
-  width: number
-  height: number
-}
 
 export interface BeadCell {
   row: number
@@ -17,132 +7,158 @@ export interface BeadCell {
   color: MardColor
 }
 
+export interface GridAlignment {
+  /** 网格原点偏移（编辑器内容坐标） */
+  offsetX: number
+  offsetY: number
+  /** 单格宽高（编辑器内容坐标） */
+  cellWidth: number
+  cellHeight: number
+  /** 图片平移（编辑器内容坐标） */
+  imageOffsetX: number
+  imageOffsetY: number
+  /** 图片缩放 */
+  imageScale: number
+  /** 网格视觉缩放（未锁定双指缩放时与图片同步，不改变格子宽高数值） */
+  gridScale: number
+}
+
 export interface AnalysisResult {
   rows: number
   cols: number
   cells: BeadCell[]
-  trimmed: boolean
 }
 
-function cellsFromImageData(
-  data: Uint8ClampedArray,
-  cols: number,
-  rows: number,
-): BeadCell[] {
-  const cells: BeadCell[] = []
+/** 格子内采样内缩比例，避开边缘邻格与中心文字 */
+const CELL_SAMPLE_INSET = 0.22
 
-  for (let row = 0; row < rows; row++) {
-    for (let col = 0; col < cols; col++) {
-      const i = (row * cols + col) * 4
-      cells.push({
-        row,
-        col,
-        color: matchMardColor(data[i]!, data[i + 1]!, data[i + 2]!),
-      })
-    }
-  }
-
-  return cells
-}
-
-function resolveGridSize(
-  width: number,
-  height: number,
-  pattern: ImageData,
-): { cols: number; rows: number } {
-  const snapped = snap(pattern, { colorVariety: 80, output: 'resized' })
-  const snapGrid = { cols: snapped.width, rows: snapped.height }
-
-  if (isPlausibleBeadGrid(width, height, snapGrid.cols, snapGrid.rows)) {
-    return snapGrid
-  }
-
-  const estimated = estimateBeadGridSize(pattern.data, pattern.width, pattern.height)
-
-  if (isPlausibleBeadGrid(width, height, estimated.cols, estimated.rows)) {
-    return estimated
-  }
-
-  // snap 结果格子过大（如 32×32 对应 ~24px/格），优先用约束估算
-  const snapCellSize = Math.max(width / snapGrid.cols, height / snapGrid.rows)
-  const estCellSize = Math.max(width / estimated.cols, height / estimated.rows)
-
-  if (snapCellSize > estCellSize) {
-    return estimated
-  }
-
-  return snapGrid
-}
-
-function preparePattern(image: HTMLImageElement, selection: SelectionRect, skipTrim = false) {
+function readImageData(image: HTMLImageElement): ImageData {
   const canvas = document.createElement('canvas')
   canvas.width = image.naturalWidth
   canvas.height = image.naturalHeight
   const ctx = canvas.getContext('2d', { willReadFrequently: true })
   if (!ctx) throw new Error('无法创建画布')
-
   ctx.drawImage(image, 0, 0)
-
-  const expanded = expandRegion(selection, image.naturalWidth, image.naturalHeight, skipTrim ? 0 : 0.05)
-  const selected = ctx.getImageData(expanded.x, expanded.y, expanded.width, expanded.height)
-
-  if (skipTrim) {
-    return { pattern: selected, trimmed: false }
-  }
-
-  const trimmedRegion = trimVerticalMargins(selected.data, selected.width, selected.height)
-  const trimmed = trimmedRegion.height < selected.height * 0.92
-  const pattern = cropImageData(selected.data, selected.width, trimmedRegion)
-
-  return { pattern, trimmed }
+  return ctx.getImageData(0, 0, canvas.width, canvas.height)
 }
 
-export function detectGridFromSelection(
+function readPixelRgb(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+): [number, number, number] {
+  const px = Math.max(0, Math.min(width - 1, Math.round(x)))
+  const py = Math.max(0, Math.min(height - 1, Math.round(y)))
+  const i = (py * width + px) * 4
+  return [data[i]!, data[i + 1]!, data[i + 2]!]
+}
+
+function contentToNatural(
+  cx: number,
+  cy: number,
   image: HTMLImageElement,
-  selection: SelectionRect,
-): { rows: number; cols: number; trimmed: boolean } {
-  const { pattern, trimmed } = preparePattern(image, selection)
-  const grid = resolveGridSize(pattern.width, pattern.height, pattern)
-  return { rows: grid.rows, cols: grid.cols, trimmed }
+  alignment: GridAlignment,
+): [number, number] {
+  const localX = (cx - alignment.imageOffsetX) / alignment.imageScale
+  const localY = (cy - alignment.imageOffsetY) / alignment.imageScale
+  return [
+    localX * (image.naturalWidth / image.clientWidth),
+    localY * (image.naturalHeight / image.clientHeight),
+  ]
 }
 
-export interface AnalyzeOptions {
-  rows?: number
-  cols?: number
-}
-
-export function analyzeGrid(
+function sampleCellColorsFromContent(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
   image: HTMLImageElement,
-  selection: SelectionRect,
-  options?: AnalyzeOptions,
-): AnalysisResult {
-  const manualRows = options?.rows ?? 0
-  const manualCols = options?.cols ?? 0
-  const useManual = manualRows > 0 && manualCols > 0
+  alignment: GridAlignment,
+  x0: number,
+  y0: number,
+  cellW: number,
+  cellH: number,
+): Array<[number, number, number]> {
+  const insetX = cellW * CELL_SAMPLE_INSET
+  const insetY = cellH * CELL_SAMPLE_INSET
+  const midX = x0 + cellW / 2
+  const midY = y0 + cellH / 2
 
-  const { pattern, trimmed } = preparePattern(image, selection, useManual)
+  const points: Array<[number, number]> = [
+    [x0 + insetX, y0 + insetY],
+    [x0 + cellW - insetX, y0 + insetY],
+    [x0 + insetX, y0 + cellH - insetY],
+    [x0 + cellW - insetX, y0 + cellH - insetY],
+    [midX, y0 + insetY],
+    [midX, y0 + cellH - insetY],
+    [x0 + insetX, midY],
+    [x0 + cellW - insetX, midY],
+  ]
 
-  const grid = useManual
-    ? { cols: manualCols, rows: manualRows }
-    : resolveGridSize(pattern.width, pattern.height, pattern)
-
-  const pixelated = pixelate(pattern, {
-    resolution: { cols: grid.cols, rows: grid.rows },
-    mode: 'detail',
-    output: 'resized',
+  return points.map(([cx, cy]) => {
+    const [nx, ny] = contentToNatural(cx, cy, image, alignment)
+    return readPixelRgb(data, width, height, nx, ny)
   })
+}
 
-  const cols = pixelated.width
-  const rows = pixelated.height
-
+/** 按用户设置的行列数与网格位置，从整张图采样分析 */
+export function analyzeAlignedGrid(
+  image: HTMLImageElement,
+  rows: number,
+  cols: number,
+  alignment: GridAlignment,
+): AnalysisResult {
+  if (!image.naturalWidth || !image.naturalHeight) {
+    throw new Error('图片尚未加载完成')
+  }
   if (rows < 1 || cols < 1) {
-    throw new Error('未能识别网格，请框选包含拼豆图案的区域')
+    throw new Error('请先设置有效的行列数')
+  }
+  if (alignment.cellWidth < 0.01 || alignment.cellHeight < 0.01) {
+    throw new Error('请先设置有效的格子宽高')
   }
 
-  const cells = cellsFromImageData(pixelated.data, cols, rows)
+  const { data, width, height } = readImageData(image)
+  const scale = alignment.gridScale ?? 1
+  const cellW = alignment.cellWidth * scale
+  const cellH = alignment.cellHeight * scale
+  const cells: BeadCell[] = []
+
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const x0 = alignment.offsetX + col * cellW
+      const y0 = alignment.offsetY + row * cellH
+      const samples = sampleCellColorsFromContent(
+        data,
+        width,
+        height,
+        image,
+        alignment,
+        x0,
+        y0,
+        cellW,
+        cellH,
+      )
+      cells.push({
+        row,
+        col,
+        color: matchMardColorFromSamples(samples),
+      })
+    }
+  }
+
   if (cells.length === 0) {
-    throw new Error('未能识别有效颜色，请重新框选')
+    throw new Error('未能识别有效颜色')
   }
 
-  return { rows, cols, cells, trimmed: useManual ? false : trimmed }
+  return { rows, cols, cells }
+}
+
+/** @deprecated 保留类型兼容 */
+export interface SelectionRect {
+  x: number
+  y: number
+  width: number
+  height: number
 }
