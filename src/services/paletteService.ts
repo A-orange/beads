@@ -78,7 +78,8 @@ function buildLabCache(colors: BeadColor[]): LabEntry[] {
 }
 
 async function fetchPaletteFile(file: string): Promise<BeadColor[]> {
-  const res = await fetch(`/palettes/${file}`)
+  const base = import.meta.env.BASE_URL
+  const res = await fetch(`${base}palettes/${file}`)
   if (!res.ok) throw new Error(`加载色卡失败: ${file}`)
   const json = (await res.json()) as PaletteFile
   return json.colors ?? []

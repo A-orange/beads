@@ -5,5 +5,8 @@ import './styles/mobile-theme.css'
 import './style.css'
 import './styles/button-overrides.css'
 import App from './App.vue'
+import { removeHostOverlays } from './utils/removeHostOverlays'
 
+removeHostOverlays()
 createApp(App).mount('#app')
+
