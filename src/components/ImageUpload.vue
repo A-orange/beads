@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { UploadFilled } from '@element-plus/icons-vue'
 import { Button } from '@pixelium/web-vue/es'
-import type { UploadFile } from 'element-plus'
+import SdIcon from './SdIcon.vue'
 
 defineProps<{
-  variant?: 'default' | 'pixel'
+  /** 嵌入 page-shell 时使用简化样式 */
+  framed?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -23,61 +23,38 @@ function handleFile(file: File) {
   emit('uploaded', URL.createObjectURL(file), file)
 }
 
-function onPixelFileChange(event: Event) {
+function onFileChange(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   if (file) handleFile(file)
   input.value = ''
 }
-
-function onUploadChange(uploadFile: UploadFile) {
-  if (uploadFile.raw) handleFile(uploadFile.raw)
-}
-
-function onDrop(event: DragEvent) {
-  event.preventDefault()
-  const file = event.dataTransfer?.files[0]
-  if (file) handleFile(file)
-}
 </script>
 
 <template>
-  <div class="image-upload" :class="variant === 'pixel' ? 'variant-pixel' : ''">
-    <div class="upload-area" @dragover.prevent @drop="onDrop">
-      <template v-if="variant === 'pixel'">
-        <div class="pixel-upload sd-panel">
-          <input
-            ref="fileInputRef"
-            type="file"
-            accept="image/*"
-            hidden
-            @change="onPixelFileChange"
-          />
-          <svg class="upload-icon" viewBox="0 0 32 32" aria-hidden="true">
-            <rect x="4" y="20" width="24" height="4" fill="currentColor" />
-            <rect x="14" y="8" width="4" height="12" fill="currentColor" />
-            <rect x="10" y="12" width="4" height="4" fill="currentColor" />
-            <rect x="18" y="12" width="4" height="4" fill="currentColor" />
-          </svg>
-          <p class="upload-title sd-heading">上传拼豆图纸</p>
-          <p class="upload-desc sd-body sd-text-muted">支持 JPG、PNG 等常见图片格式</p>
-          <Button block theme="primary" size="large" @click="openFilePicker">选择图片</Button>
-        </div>
-      </template>
-      <el-upload
-        v-else
-        drag
-        :auto-upload="false"
-        :show-file-list="false"
+  <div class="image-upload" :class="{ framed }">
+    <div class="upload-inner" :class="{ framed }">
+      <input
+        ref="fileInputRef"
+        type="file"
         accept="image/*"
-        @change="onUploadChange"
-      >
-        <div class="upload-content">
-          <el-icon :size="56" color="#409eff"><UploadFilled /></el-icon>
-          <p class="upload-title">上传拼豆图纸</p>
-          <p class="upload-desc">支持 JPG、PNG 等常见图片格式</p>
-        </div>
-      </el-upload>
+        hidden
+        @change="onFileChange"
+      />
+      <div class="upload-icon-wrap" aria-hidden="true">
+        <svg class="upload-icon" viewBox="0 0 32 32">
+          <rect x="4" y="20" width="24" height="4" fill="currentColor" />
+          <rect x="14" y="8" width="4" height="12" fill="currentColor" />
+          <rect x="10" y="12" width="4" height="4" fill="currentColor" />
+          <rect x="18" y="12" width="4" height="4" fill="currentColor" />
+        </svg>
+      </div>
+      <p class="upload-title sd-heading">上传拼豆图纸</p>
+      <p class="upload-desc sd-body sd-text-muted">支持 JPG、PNG 等常见图片格式</p>
+      <p class="upload-tip sd-text-muted">上传后可在下一步对齐网格并匹配色号</p>
+      <Button block theme="primary" size="large" class="sd-btn-white" @click="openFilePicker">
+        <span class="sd-btn-inner"><SdIcon name="image" :size="16" />选择图片</span>
+      </Button>
     </div>
   </div>
 </template>
@@ -89,70 +66,75 @@ function onDrop(event: DragEvent) {
   align-items: center;
   justify-content: center;
   min-height: 0;
+  padding: 4px 0;
 }
 
-.upload-area {
-  width: 100%;
-  padding: 16px;
+.image-upload.framed {
+  padding: 16px 12px;
+  align-items: stretch;
 }
 
-.upload-area :deep(.el-upload),
-.upload-area :deep(.el-upload-dragger) {
-  width: 100%;
-}
-
-.upload-area :deep(.el-upload-dragger) {
-  min-height: 220px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.upload-content {
-  text-align: center;
-  padding: 12px;
-}
-
-.upload-title {
-  margin: 16px 0 6px;
-  font-size: 17px;
-  font-weight: 600;
-}
-
-.upload-desc {
-  margin: 0;
-  font-size: 13px;
-  color: #909399;
-}
-
-.variant-pixel .upload-area {
-  padding: 0;
-}
-
-.pixel-upload {
-  width: 100%;
-  min-height: 240px;
+.upload-inner {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
   gap: 10px;
-  padding: 24px 20px;
+  padding: 28px 20px 24px;
   text-align: center;
+  min-height: 260px;
+  justify-content: center;
+  background: var(--sd-surface);
+  border: 2px solid var(--sd-border-light);
+  border-radius: 2px;
+  box-shadow: inset 2px 2px 0 0 rgba(92, 64, 51, 0.12);
+  border-style: dashed;
+}
+
+.upload-inner.framed {
+  flex: 1;
+  min-height: 0;
+  justify-content: center;
+}
+
+.upload-icon-wrap {
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(95, 160, 68, 0.12);
+  border: 2px solid var(--sd-primary-light);
+  box-shadow: 2px 2px 0 0 var(--sd-shadow);
 }
 
 .upload-icon {
-  width: 48px;
-  height: 48px;
-  color: var(--sd-primary, #5fa044);
+  width: 40px;
+  height: 40px;
+  color: var(--sd-primary);
 }
 
-.variant-pixel .upload-title {
-  font-size: 13px;
-  margin: 0;
+.upload-title {
+  font-size: 14px;
 }
 
-.variant-pixel .upload-desc {
+.upload-desc {
   font-size: 12px;
+}
+
+.upload-tip {
+  margin: 0;
+  font-size: 11px;
+  font-family: var(--sd-font-body);
+  line-height: 1.5;
+}
+
+:deep(.px-button.sd-btn-white) {
+  --text-color: #fff !important;
+  color: #fff !important;
+}
+
+:deep(.px-button.sd-btn-white .sd-btn-inner),
+:deep(.px-button.sd-btn-white .sd-icon) {
+  color: #fff !important;
 }
 </style>

@@ -1,0 +1,34 @@
+/**
+ * Pixelium Button 实心主按钮默认 --text-color 为深色，此处强制白字。
+ * 须覆盖 --text-color，仅设置 color 不够。
+ */
+.px-button.sd-btn-white {
+  --text-color: #fff !important;
+  color: #fff !important;
+}
+
+.px-button.sd-btn-white:hover,
+.px-button.sd-btn-white:active,
+.px-button.sd-btn-white:focus-visible {
+  --text-color: #fff !important;
+  color: #fff !important;
+}
+
+.px-button.sd-btn-white.px-button__loading,
+.px-button.sd-btn-white.px-button__loading:hover {
+  --text-color: #fff !important;
+  color: #fff !important;
+}
+
+.px-button.sd-btn-white.px-button__disabled,
+.px-button.sd-btn-white.px-button__disabled:hover {
+  --text-color: rgba(255, 255, 255, 0.72) !important;
+  color: rgba(255, 255, 255, 0.72) !important;
+}
+
+.px-button.sd-btn-white .sd-btn-inner,
+.px-button.sd-btn-white .sd-icon,
+.px-button.sd-btn-white .px-button-icon {
+  color: #fff !important;
+  fill: #fff !important;
+}

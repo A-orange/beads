@@ -1,10 +1,12 @@
-import { matchMardColorFromSamples } from './colorMatch'
-import type { MardColor } from '../data/mard221'
+import { matchBeadColorFromSamples } from './colorMatch'
+import type { BeadColor } from '../data/beadColor'
+
+export type { BeadColor }
 
 export interface BeadCell {
   row: number
   col: number
-  color: MardColor
+  color: BeadColor
 }
 
 export interface GridAlignment {
@@ -21,6 +23,10 @@ export interface GridAlignment {
   imageScale: number
   /** 网格视觉缩放（未锁定双指缩放时与图片同步，不改变格子宽高数值） */
   gridScale: number
+  /** 编辑器内图片显示基准宽（imgScale=1 时，对应 natural 坐标换算） */
+  displayWidth: number
+  /** 编辑器内图片显示基准高 */
+  displayHeight: number
 }
 
 export interface AnalysisResult {
@@ -61,11 +67,13 @@ function contentToNatural(
   image: HTMLImageElement,
   alignment: GridAlignment,
 ): [number, number] {
+  const displayW = alignment.displayWidth || image.clientWidth || image.naturalWidth
+  const displayH = alignment.displayHeight || image.clientHeight || image.naturalHeight
   const localX = (cx - alignment.imageOffsetX) / alignment.imageScale
   const localY = (cy - alignment.imageOffsetY) / alignment.imageScale
   return [
-    localX * (image.naturalWidth / image.clientWidth),
-    localY * (image.naturalHeight / image.clientHeight),
+    localX * (image.naturalWidth / displayW),
+    localY * (image.naturalHeight / displayH),
   ]
 }
 
@@ -143,7 +151,7 @@ export function analyzeAlignedGrid(
       cells.push({
         row,
         col,
-        color: matchMardColorFromSamples(samples),
+        color: matchBeadColorFromSamples(samples),
       })
     }
   }

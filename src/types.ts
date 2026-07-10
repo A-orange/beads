@@ -1,10 +1,13 @@
-import type { MardColor } from './data/mard221'
+import type { BeadColor } from './data/beadColor'
 import type { BeadCell } from './utils/imageAnalysis'
 
+export type { BeadColor }
+
 export interface ColorUsage {
-  color: MardColor
+  color: BeadColor
   count: number
   visible: boolean
+  isBackground?: boolean
 }
 
 export interface GridState {

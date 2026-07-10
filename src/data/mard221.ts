@@ -1,10 +1,7 @@
-export interface MardColor {
-  tag: string
-  hex: string
-  rgb: [number, number, number]
-}
+export type { BeadColor, BeadColor as MardColor } from './beadColor'
+import type { BeadColor } from './beadColor'
 
-export const MARD_PALETTE: MardColor[] = [
+export const MARD_PALETTE: BeadColor[] = [
   { tag: 'A1', hex: '#FAF4C8', rgb: [250, 244, 200] },
   { tag: 'A2', hex: '#FFFFD5', rgb: [255, 255, 213] },
   { tag: 'A3', hex: '#FEFF8B', rgb: [254, 255, 139] },

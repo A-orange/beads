@@ -2,8 +2,14 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { Button } from '@pixelium/web-vue/es'
 import NumericStepper from './NumericStepper.vue'
+import SdIcon from './SdIcon.vue'
 import { usePinchPan } from '../composables/usePinchPan'
 import type { GridAlignment } from '../utils/imageAnalysis'
+import {
+  computeAlignDisplaySize,
+  drawAlignCanvas,
+  getAlignContentBounds,
+} from '../utils/alignCanvas'
 
 const GRID_COLORS = ['#ffffff', '#00ff00', '#ff00ff', '#ffff00', '#00ffff', '#ff4444']
 const CELL_SIZE_MIN = 0.01
@@ -19,9 +25,10 @@ const props = defineProps<{
   cellWidth: number
   cellHeight: number
   gridColor: string
-  variant?: 'default' | 'pixel'
   /** 画布优先：控件沉底，视口占满可用空间 */
   immersive?: boolean
+  /** 嵌入 page-shell 时去掉独立外框 */
+  framed?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -33,9 +40,10 @@ const emit = defineEmits<{
 }>()
 
 const viewportRef = ref<HTMLElement | null>(null)
+const canvasRef = ref<HTMLCanvasElement | null>(null)
 const contentRef = ref<HTMLElement | null>(null)
 const imageRef = ref<HTMLImageElement | null>(null)
-const dockExpanded = ref(false)
+const settingsOpen = ref(true)
 
 const imageLocked = ref(false)
 const sizeLinked = ref(true)
@@ -46,15 +54,41 @@ const imgScale = ref(1)
 const gridScale = ref(1)
 const imgDisplaySize = ref({ w: 0, h: 0 })
 
+const showGrid = computed(
+  () => props.rows > 0 && props.cols > 0 && props.cellWidth > 0 && props.cellHeight > 0,
+)
+
+const gridPixelSize = computed(() => ({
+  w: props.cols * props.cellWidth,
+  h: props.rows * props.cellHeight,
+}))
+
+const contentBounds = computed(() =>
+  getAlignContentBounds({
+    imageDisplayW: imgDisplaySize.value.w,
+    imageDisplayH: imgDisplaySize.value.h,
+    imgOffsetX: imgOffset.value.x,
+    imgOffsetY: imgOffset.value.y,
+    imgScale: imgScale.value,
+    gridOffsetX: gridOffset.value.x,
+    gridOffsetY: gridOffset.value.y,
+    gridScale: gridScale.value,
+    rows: props.rows,
+    cols: props.cols,
+    cellWidth: props.cellWidth,
+    cellHeight: props.cellHeight,
+    showGrid: showGrid.value,
+  }),
+)
+
 const {
   scale,
   translateX,
   translateY,
-  transformStyle,
   fitToView,
   resetView,
   bindFitWhenReady,
-} = usePinchPan(viewportRef, contentRef)
+} = usePinchPan(viewportRef, contentRef, { contentSize: contentBounds })
 
 bindFitWhenReady(() => [
   props.imageUrl,
@@ -65,55 +99,71 @@ bindFitWhenReady(() => [
   props.immersive,
 ])
 
-const showGrid = computed(
-  () => props.rows > 0 && props.cols > 0 && props.cellWidth > 0 && props.cellHeight > 0,
-)
+let drawRaf = 0
+let resizeObserver: ResizeObserver | null = null
 
-const gridPixelSize = computed(() => ({
-  w: props.cols * props.cellWidth,
-  h: props.rows * props.cellHeight,
-}))
+function scheduleDraw() {
+  if (drawRaf) return
+  drawRaf = requestAnimationFrame(() => {
+    drawRaf = 0
+    drawFrame()
+  })
+}
 
-const contentSize = computed(() => ({
-  w: Math.max(
-    imgDisplaySize.value.w * imgScale.value,
-    gridOffset.value.x + gridPixelSize.value.w * gridScale.value,
-  ),
-  h: Math.max(
-    imgDisplaySize.value.h * imgScale.value,
-    gridOffset.value.y + gridPixelSize.value.h * gridScale.value,
-  ),
-}))
+function drawFrame() {
+  const canvas = canvasRef.value
+  const viewport = viewportRef.value
+  const img = imageRef.value
+  if (!canvas || !viewport) return
 
-const imageTransformStyle = computed(() => ({
-  transform: `translate(${imgOffset.value.x}px, ${imgOffset.value.y}px) scale(${imgScale.value})`,
-  transformOrigin: '0 0',
-}))
+  const vw = viewport.clientWidth
+  const vh = viewport.clientHeight
+  if (vw <= 0 || vh <= 0) return
 
-const verticalLines = computed(() => {
-  if (!showGrid.value) return []
-  return Array.from({ length: props.cols - 1 }, (_, i) => ((i + 1) / props.cols) * 100)
-})
+  const dpr = Math.min(window.devicePixelRatio || 1, 2)
+  canvas.width = Math.round(vw * dpr)
+  canvas.height = Math.round(vh * dpr)
+  canvas.style.width = `${vw}px`
+  canvas.style.height = `${vh}px`
 
-const horizontalLines = computed(() => {
-  if (!showGrid.value) return []
-  return Array.from({ length: props.rows - 1 }, (_, i) => ((i + 1) / props.rows) * 100)
-})
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
 
-const gridOverlayStyle = computed(() => ({
-  left: `${gridOffset.value.x}px`,
-  top: `${gridOffset.value.y}px`,
-  width: `${gridPixelSize.value.w}px`,
-  height: `${gridPixelSize.value.h}px`,
-  transform: `scale(${gridScale.value})`,
-  transformOrigin: '0 0',
-  '--grid-color': props.gridColor,
-}))
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  drawAlignCanvas(ctx, {
+    image: img?.complete && img.naturalWidth ? img : null,
+    imageDisplayW: imgDisplaySize.value.w,
+    imageDisplayH: imgDisplaySize.value.h,
+    imgOffsetX: imgOffset.value.x,
+    imgOffsetY: imgOffset.value.y,
+    imgScale: imgScale.value,
+    gridOffsetX: gridOffset.value.x,
+    gridOffsetY: gridOffset.value.y,
+    gridScale: gridScale.value,
+    rows: props.rows,
+    cols: props.cols,
+    cellWidth: props.cellWidth,
+    cellHeight: props.cellHeight,
+    gridColor: props.gridColor,
+    showGrid: showGrid.value,
+    viewportW: vw,
+    viewportH: vh,
+    viewportTx: translateX.value,
+    viewportTy: translateY.value,
+    viewportScale: scale.value,
+  })
+}
 
 const alignHint = computed(() =>
   imageLocked.value
-    ? '单指拖网格 · 双指调整格子宽高'
-    : '单指拖动 · 双指整体缩放（宽高数值不变）',
+    ? '拖动平移网格 · 滚轮/双指调整格子宽高'
+    : '拖动平移 · 滚轮/双指整体缩放（宽高数值不变）',
+)
+
+const gridSizeLabel = computed(() =>
+  showGrid.value
+    ? `${formatSize(gridPixelSize.value.w)}×${formatSize(gridPixelSize.value.h)}`
+    : null,
 )
 
 let dragging = false
@@ -167,9 +217,12 @@ function dampCellPinchRatio(rawRatio: number) {
 
 function measureImage() {
   const img = imageRef.value
-  if (!img?.clientWidth) return
-  imgDisplaySize.value = { w: img.clientWidth, h: img.clientHeight }
-  requestAnimationFrame(() => fitToView())
+  if (!img?.naturalWidth) return
+  imgDisplaySize.value = computeAlignDisplaySize(img.naturalWidth, img.naturalHeight)
+  requestAnimationFrame(() => {
+    fitToView()
+    scheduleDraw()
+  })
 }
 
 function resetGridPosition() {
@@ -275,8 +328,8 @@ function onTouchMove(event: TouchEvent) {
     const ratio = dist / pinchStartDist
 
     if (imageLocked.value) {
-      const ratio = dampCellPinchRatio(dist / pinchStartDist)
-      applyCellSize(pinchStartCellW * ratio, pinchStartCellH * ratio)
+      const damped = dampCellPinchRatio(ratio)
+      applyCellSize(pinchStartCellW * damped, pinchStartCellH * damped)
     } else {
       const newImgScale = clamp(pinchStartImgScale * ratio, 0.1, 10)
       const newGridScale = clamp(pinchStartGridScale * ratio, 0.1, 10)
@@ -297,6 +350,7 @@ function onTouchMove(event: TouchEvent) {
         y: pinchAnchorContent.y - gridLocalY * newGridScale,
       }
     }
+    scheduleDraw()
     return
   }
 
@@ -323,12 +377,44 @@ function onTouchMove(event: TouchEvent) {
         }
       }
     }
+    scheduleDraw()
   }
 }
 
 function onTouchEnd(event: TouchEvent) {
   if (event.touches.length < 2) pinchStartDist = 0
   if (event.touches.length === 0) dragging = false
+}
+
+function onWheel(event: WheelEvent) {
+  event.preventDefault()
+  const ratio = Math.exp(-event.deltaY * 0.002)
+  const anchor = screenToContent(event.clientX, event.clientY)
+
+  if (imageLocked.value && showGrid.value) {
+    const damped = dampCellPinchRatio(ratio)
+    applyCellSize(props.cellWidth * damped, props.cellHeight * damped)
+  } else if (!imageLocked.value) {
+    const newImgScale = clamp(imgScale.value * ratio, 0.1, 10)
+    const newGridScale = clamp(gridScale.value * ratio, 0.1, 10)
+
+    const imgLocalX = (anchor.x - imgOffset.value.x) / imgScale.value
+    const imgLocalY = (anchor.y - imgOffset.value.y) / imgScale.value
+    imgScale.value = newImgScale
+    imgOffset.value = {
+      x: anchor.x - imgLocalX * newImgScale,
+      y: anchor.y - imgLocalY * newImgScale,
+    }
+
+    const gridLocalX = (anchor.x - gridOffset.value.x) / gridScale.value
+    const gridLocalY = (anchor.y - gridOffset.value.y) / gridScale.value
+    gridScale.value = newGridScale
+    gridOffset.value = {
+      x: anchor.x - gridLocalX * newGridScale,
+      y: anchor.y - gridLocalY * newGridScale,
+    }
+  }
+  scheduleDraw()
 }
 
 function onMouseDown(event: MouseEvent) {
@@ -364,6 +450,7 @@ function onMouseMove(event: MouseEvent) {
       }
     }
   }
+  scheduleDraw()
 }
 
 function onMouseUp() {
@@ -382,6 +469,8 @@ function getGridAlignment(): GridAlignment {
       imageOffsetY: 0,
       imageScale: 1,
       gridScale: 1,
+      displayWidth: 0,
+      displayHeight: 0,
     }
   }
 
@@ -394,17 +483,49 @@ function getGridAlignment(): GridAlignment {
     imageOffsetY: imgOffset.value.y,
     imageScale: imgScale.value,
     gridScale: gridScale.value,
+    displayWidth: imgDisplaySize.value.w,
+    displayHeight: imgDisplaySize.value.h,
   }
 }
+
+watch(settingsOpen, () => scheduleDraw())
+
+watch(
+  () =>
+    [
+      props.rows,
+      props.cols,
+      props.cellWidth,
+      props.cellHeight,
+      props.gridColor,
+      imgScale.value,
+      gridScale.value,
+      imgOffset.value,
+      gridOffset.value,
+      imgDisplaySize.value,
+      imageLocked.value,
+    ] as const,
+  scheduleDraw,
+  { deep: true },
+)
+
+watch([scale, translateX, translateY], scheduleDraw)
 
 onMounted(() => {
   window.addEventListener('mouseup', onMouseUp)
   window.addEventListener('mousemove', onMouseMove)
+  if (viewportRef.value) {
+    resizeObserver = new ResizeObserver(() => scheduleDraw())
+    resizeObserver.observe(viewportRef.value)
+  }
+  scheduleDraw()
 })
 
 onUnmounted(() => {
   window.removeEventListener('mouseup', onMouseUp)
   window.removeEventListener('mousemove', onMouseMove)
+  resizeObserver?.disconnect()
+  if (drawRaf) cancelAnimationFrame(drawRaf)
 })
 
 defineExpose({ imageRef, getGridAlignment, resetGridPosition })
@@ -412,40 +533,143 @@ defineExpose({ imageRef, getGridAlignment, resetGridPosition })
 
 <template>
   <div
-    class="grid-align-editor"
-    :class="{
-      'variant-pixel': variant === 'pixel',
-      immersive: immersive,
-      expanded: dockExpanded || !immersive,
-    }"
+    class="grid-align-editor variant-pixel"
+    :class="{ immersive: immersive, framed: framed }"
   >
     <!-- 画布区域优先 -->
     <div class="align-stage">
-      <div class="stage-bar">
+      <div class="sd-page-toolbar">
         <button
           type="button"
-          class="lock-btn"
-          :class="{ locked: imageLocked }"
+          class="sd-toolbar-btn"
+          :class="{ 'is-primary': imageLocked }"
           @click="imageLocked = !imageLocked"
         >
-          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-            <path
-              v-if="imageLocked"
-              fill="currentColor"
-              d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2z"
-            />
-            <path
-              v-else
-              fill="currentColor"
-              d="M12 17c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm6-9h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6h2c0-1.66 1.34-3 3-3s3 1.34 3 3v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2z"
-            />
-          </svg>
+          <SdIcon :name="imageLocked ? 'lock' : 'unlock'" :size="12" />
           {{ imageLocked ? '已锁定' : '锁定图片' }}
         </button>
-        <span class="stage-hint">{{ alignHint }}</span>
-        <span v-if="showGrid" class="stage-meta">
-          {{ formatSize(gridPixelSize.w) }}×{{ formatSize(gridPixelSize.h) }}
-        </span>
+        <button
+          type="button"
+          class="sd-toolbar-btn toolbar-settings-btn"
+          :aria-expanded="settingsOpen"
+          :title="settingsOpen ? '收起网格设置' : '展开网格设置'"
+          @click="settingsOpen = !settingsOpen"
+        >
+          <SdIcon name="settings" :size="12" />
+          <span class="settings-toggle-label">网格设置</span>
+          <span class="settings-chevron" :class="{ up: settingsOpen }">
+            <SdIcon name="chevron-down" :size="12" />
+          </span>
+        </button>
+      </div>
+
+      <div v-show="settingsOpen" class="settings-panel">
+        <div class="settings-body">
+          <div class="row-cols">
+            <label class="field">
+              <span>列</span>
+              <NumericStepper
+                compact
+                :model-value="cols"
+                :min="1"
+                :max="300"
+                @update:model-value="onColsChange"
+              />
+            </label>
+            <button
+              type="button"
+              class="link-btn"
+              :class="{ linked: dimensionLinked }"
+              :title="dimensionLinked ? '行列相同，点击取消' : '点击使行列相同'"
+              @click="toggleDimensionLink"
+            >
+              <SdIcon name="link" :size="14" />
+            </button>
+            <label class="field">
+              <span>行</span>
+              <NumericStepper
+                compact
+                :model-value="rows"
+                :min="1"
+                :max="300"
+                @update:model-value="onRowsChange"
+              />
+            </label>
+          </div>
+
+          <div class="row-size">
+            <label class="field">
+              <span>宽</span>
+              <NumericStepper
+                compact
+                :decimals="2"
+                :step="1"
+                :model-value="cellWidth"
+                :min="CELL_SIZE_MIN"
+                :max="CELL_SIZE_MAX"
+                @update:model-value="onCellWidthChange"
+              />
+            </label>
+            <button
+              type="button"
+              class="link-btn"
+              :class="{ linked: sizeLinked }"
+              :title="sizeLinked ? '宽高相同，点击取消' : '点击使宽高相同'"
+              @click="toggleSizeLink"
+            >
+              <SdIcon name="link" :size="14" />
+            </button>
+            <label class="field">
+              <span>高</span>
+              <NumericStepper
+                compact
+                :decimals="2"
+                :step="1"
+                :model-value="cellHeight"
+                :min="CELL_SIZE_MIN"
+                :max="CELL_SIZE_MAX"
+                @update:model-value="onCellHeightChange"
+              />
+            </label>
+          </div>
+
+          <div class="color-row">
+            <span class="control-label">网格色</span>
+            <div class="color-swatches">
+              <button
+                v-for="c in GRID_COLORS"
+                :key="c"
+                type="button"
+                class="color-swatch"
+                :class="{ active: gridColor === c }"
+                :style="{ backgroundColor: c }"
+                :title="c"
+                @click="emit('update:gridColor', c)"
+              >
+                <SdIcon v-if="gridColor === c" name="check" :size="10" class="swatch-check" />
+              </button>
+              <input
+                type="color"
+                class="color-picker"
+                :value="gridColor"
+                title="自定义颜色"
+                @input="emit('update:gridColor', ($event.target as HTMLInputElement).value)"
+              />
+            </div>
+          </div>
+
+          <div class="control-actions">
+            <Button size="small" variant="outline" theme="notice" @click="resetGridPosition">
+              <span class="sd-btn-inner"><SdIcon name="reset-grid" :size="12" />重置网格</span>
+            </Button>
+            <Button size="small" variant="outline" theme="notice" @click="resetImageTransform">
+              <span class="sd-btn-inner"><SdIcon name="reset-image" :size="12" />重置图片</span>
+            </Button>
+            <Button size="small" variant="outline" theme="info" @click="resetView(); scheduleDraw()">
+              <span class="sd-btn-inner"><SdIcon name="fit-view" :size="12" />适应窗口</span>
+            </Button>
+          </div>
+        </div>
       </div>
 
       <div
@@ -455,228 +679,22 @@ defineExpose({ imageRef, getGridAlignment, resetGridPosition })
         @touchmove="onTouchMove"
         @touchend="onTouchEnd"
         @touchcancel="onTouchEnd"
+        @wheel.prevent="onWheel"
         @mousedown="onMouseDown"
       >
-        <div
-          ref="contentRef"
-          class="align-content"
-          :style="{
-            ...transformStyle,
-            width: contentSize.w + 'px',
-            height: contentSize.h + 'px',
-          }"
-        >
-          <div class="image-layer" :style="imageTransformStyle">
-            <img
-              ref="imageRef"
-              :src="imageUrl"
-              alt="拼豆图纸"
-              draggable="false"
-              @load="onImageLoad"
-            />
-          </div>
-          <svg
-            v-if="showGrid"
-            class="grid-overlay"
-            :style="gridOverlayStyle"
-            viewBox="0 0 100 100"
-            preserveAspectRatio="none"
-          >
-            <line
-              v-for="(pos, i) in verticalLines"
-              :key="'v' + i"
-              :x1="pos"
-              y1="0"
-              :x2="pos"
-              y2="100"
-            />
-            <line
-              v-for="(pos, i) in horizontalLines"
-              :key="'h' + i"
-              x1="0"
-              :y1="pos"
-              x2="100"
-              :y2="pos"
-            />
-            <rect class="grid-border" x="0" y="0" width="100" height="100" />
-          </svg>
-        </div>
-      </div>
-    </div>
-
-    <!-- 控件沉底 -->
-    <div class="align-dock">
-      <button
-        v-if="immersive"
-        type="button"
-        class="dock-toggle"
-        :aria-expanded="dockExpanded"
-        @click.stop="dockExpanded = !dockExpanded"
-      >
-        <span>{{ dockExpanded ? '收起' : '更多设置' }}</span>
-        <svg
-          viewBox="0 0 24 24"
-          width="14"
-          height="14"
-          aria-hidden="true"
-          :class="{ up: dockExpanded }"
-        >
-          <path fill="currentColor" d="M7 10l5 5 5-5H7z" />
-        </svg>
-      </button>
-
-      <div class="dock-body">
-        <div class="row-cols">
-          <label class="field">
-            <span>列</span>
-            <NumericStepper
-              compact
-              :model-value="cols"
-              :min="1"
-              :max="300"
-              :variant="variant"
-              @update:model-value="onColsChange"
-            />
-          </label>
-          <button
-            type="button"
-            class="link-btn"
-            :class="{ linked: dimensionLinked }"
-            :title="dimensionLinked ? '行列相同，点击取消' : '点击使行列相同'"
-            @click="toggleDimensionLink"
-          >
-            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-              <path
-                v-if="dimensionLinked"
-                fill="currentColor"
-                d="M17 7h-4v2h4c1.65 0 3 1.35 3 3s-1.35 3-3 3h-4v2h4c2.76 0 5-2.24 5-5s-2.24-5-5-5zm-6 0H7C4.24 7 2 9.24 2 12s2.24 5 5 5h4v-2H7c-1.65 0-3-1.35-3-3s1.35-3 3-3h4V7zm-1 4h6v2h-6v-2z"
-              />
-              <path
-                v-else
-                fill="currentColor"
-                d="M17 7h-4v2h4c1.65 0 3 1.35 3 3s-1.35 3-3 3h-4v2h4c2.76 0 5-2.24 5-5s-2.24-5-5-5zm-6 0H7C4.24 7 2 9.24 2 12s2.24 5 5 5h4v-2H7c-1.65 0-3-1.35-3-3s1.35-3 3-3h4V7z"
-              />
-            </svg>
-          </button>
-          <label class="field">
-            <span>行</span>
-            <NumericStepper
-              compact
-              :model-value="rows"
-              :min="1"
-              :max="300"
-              :variant="variant"
-              @update:model-value="onRowsChange"
-            />
-          </label>
-        </div>
-
-        <div class="row-size">
-          <label class="field">
-            <span>宽</span>
-            <NumericStepper
-              compact
-              :decimals="2"
-              :step="0.01"
-              :model-value="cellWidth"
-              :min="CELL_SIZE_MIN"
-              :max="CELL_SIZE_MAX"
-              :variant="variant"
-              @update:model-value="onCellWidthChange"
-            />
-          </label>
-          <button
-            type="button"
-            class="link-btn"
-            :class="{ linked: sizeLinked }"
-            :title="sizeLinked ? '宽高相同，点击取消' : '点击使宽高相同'"
-            @click="toggleSizeLink"
-          >
-            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-              <path
-                v-if="sizeLinked"
-                fill="currentColor"
-                d="M17 7h-4v2h4c1.65 0 3 1.35 3 3s-1.35 3-3 3h-4v2h4c2.76 0 5-2.24 5-5s-2.24-5-5-5zm-6 0H7C4.24 7 2 9.24 2 12s2.24 5 5 5h4v-2H7c-1.65 0-3-1.35-3-3s1.35-3 3-3h4V7zm-1 4h6v2h-6v-2z"
-              />
-              <path
-                v-else
-                fill="currentColor"
-                d="M17 7h-4v2h4c1.65 0 3 1.35 3 3s-1.35 3-3 3h-4v2h4c2.76 0 5-2.24 5-5s-2.24-5-5-5zm-6 0H7C4.24 7 2 9.24 2 12s2.24 5 5 5h4v-2H7c-1.65 0-3-1.35-3-3s1.35-3 3-3h4V7z"
-              />
-            </svg>
-          </button>
-          <label class="field">
-            <span>高</span>
-            <NumericStepper
-              compact
-              :decimals="2"
-              :step="0.01"
-              :model-value="cellHeight"
-              :min="CELL_SIZE_MIN"
-              :max="CELL_SIZE_MAX"
-              :variant="variant"
-              @update:model-value="onCellHeightChange"
-            />
-          </label>
-        </div>
-
-        <div class="color-row">
-          <span class="control-label">网格色</span>
-          <div class="color-swatches">
-            <button
-              v-for="c in GRID_COLORS"
-              :key="c"
-              type="button"
-              class="color-swatch"
-              :class="{ active: gridColor === c }"
-              :style="{ backgroundColor: c }"
-              :title="c"
-              @click="emit('update:gridColor', c)"
-            />
-            <input
-              type="color"
-              class="color-picker"
-              :value="gridColor"
-              title="自定义颜色"
-              @input="emit('update:gridColor', ($event.target as HTMLInputElement).value)"
-            />
-          </div>
-        </div>
-
-        <div class="dock-extra">
-          <div class="control-actions">
-            <Button
-              v-if="variant === 'pixel'"
-              size="small"
-              variant="outline"
-              theme="notice"
-              @click="resetGridPosition"
-            >
-              重置网格
-            </Button>
-            <el-button v-else size="small" @click="resetGridPosition">重置网格</el-button>
-            <Button
-              v-if="variant === 'pixel'"
-              size="small"
-              variant="outline"
-              theme="notice"
-              @click="resetImageTransform"
-            >
-              重置图片
-            </Button>
-            <el-button v-else size="small" @click="resetImageTransform">重置图片</el-button>
-            <Button
-              v-if="variant === 'pixel'"
-              size="small"
-              variant="outline"
-              theme="info"
-              @click="resetView()"
-            >
-              适应窗口
-            </Button>
-            <el-button v-else size="small" @click="resetView()">适应窗口</el-button>
-          </div>
-        </div>
+        <canvas ref="canvasRef" class="align-canvas" />
+        <p class="viewport-hint">{{ alignHint }}</p>
+        <p v-if="gridSizeLabel" class="viewport-meta">{{ gridSizeLabel }}</p>
+        <img
+          ref="imageRef"
+          class="analysis-source"
+          :src="imageUrl"
+          alt=""
+          draggable="false"
+          decoding="async"
+          @load="onImageLoad"
+        />
+        <div ref="contentRef" class="align-measure" aria-hidden="true" />
       </div>
     </div>
   </div>
@@ -698,144 +716,30 @@ defineExpose({ imageRef, getGridAlignment, resetGridPosition })
   flex-direction: column;
 }
 
-.stage-bar {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  min-height: 36px;
+.toolbar-settings-btn {
+  margin-left: auto;
 }
 
-.stage-hint {
-  flex: 1;
-  font-size: 11px;
-  color: #909399;
+.settings-toggle-label {
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-.stage-meta {
-  flex-shrink: 0;
-  font-size: 10px;
-  font-weight: 600;
-  color: #909399;
-  font-variant-numeric: tabular-nums;
-}
-
-.lock-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 5px 10px;
-  font-size: 11px;
-  font-weight: 600;
-  border: 1px solid #dcdfe6;
-  border-radius: 6px;
-  background: #fff;
-  color: #606266;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-}
-
-.lock-btn.locked {
-  color: #fff;
-  background: var(--sd-primary, #5fa044);
-  border-color: var(--sd-primary, #5fa044);
-}
-
-.align-viewport {
-  flex: 1;
-  min-height: 120px;
-  overflow: hidden;
-  touch-action: none;
-  background: #f0f2f5;
-  border-radius: 8px;
-  position: relative;
-}
-
-.align-content {
-  position: absolute;
-  top: 0;
-  left: 0;
-}
-
-.image-layer {
-  position: absolute;
-  top: 0;
-  left: 0;
-  will-change: transform;
-}
-
-.image-layer img {
-  display: block;
-  max-width: none;
-  width: auto;
-  height: auto;
-  user-select: none;
-  pointer-events: none;
-}
-
-.grid-overlay {
-  position: absolute;
-  pointer-events: none;
-  overflow: visible;
-}
-
-.grid-overlay line {
-  stroke: var(--grid-color, #ffffff);
-  stroke-width: 1.2;
-  vector-effect: non-scaling-stroke;
-  shape-rendering: crispEdges;
-  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.85));
-}
-
-.grid-overlay .grid-border {
-  fill: none;
-  stroke: var(--grid-color, #ffffff);
-  stroke-width: 1.8;
-  vector-effect: non-scaling-stroke;
-  shape-rendering: crispEdges;
-  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.85));
-}
-
-/* 底部控件区 */
-.align-dock {
-  flex-shrink: 0;
-}
-
-.dock-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: 100%;
-  padding: 8px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  border: none;
-  border-top: 1px solid #e4e7ed;
-  background: #fff;
-  color: #606266;
-  cursor: pointer;
-}
-
-.dock-toggle svg {
+.settings-chevron {
   transition: transform 0.2s;
 }
 
-.dock-toggle svg.up {
+.settings-chevron.up {
   transform: rotate(180deg);
 }
 
-.dock-body {
-  padding: 8px 8px 8px;
+.settings-panel {
+  flex-shrink: 0;
+  background: var(--sd-surface, #fff8ee);
+  border-bottom: 2px solid var(--sd-border-light, #c4a882);
 }
 
-.grid-align-editor.immersive:not(.expanded) .dock-extra {
-  display: none;
+.settings-body {
+  padding: 8px 8px 10px;
 }
 
 .row-cols {
@@ -854,6 +758,73 @@ defineExpose({ imageRef, getGridAlignment, resetGridPosition })
   margin-bottom: 8px;
 }
 
+.align-viewport {
+  flex: 1;
+  min-height: 120px;
+  overflow: hidden;
+  touch-action: none;
+  background: #f0f2f5;
+  border-radius: 8px;
+  position: relative;
+}
+
+.align-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+
+.viewport-hint,
+.viewport-meta {
+  position: absolute;
+  margin: 0;
+  pointer-events: none;
+  z-index: 2;
+  line-height: 1.3;
+}
+
+.viewport-hint {
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  font-weight: 600;
+  color: #8b7355;
+  white-space: nowrap;
+  max-width: calc(100% - 16px);
+  text-align: center;
+}
+
+.viewport-meta {
+  bottom: 10px;
+  right: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #6f4e37;
+}
+
+.analysis-source {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.align-measure {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+/* 设置面板字段 */
 .field {
   display: flex;
   flex-direction: column;
@@ -892,7 +863,10 @@ defineExpose({ imageRef, getGridAlignment, resetGridPosition })
   background: rgba(95, 160, 68, 0.08);
 }
 
-.dock-extra {
+.control-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
   margin-top: 4px;
   padding-top: 8px;
   border-top: 1px dashed #dcdfe6;
@@ -925,6 +899,14 @@ defineExpose({ imageRef, getGridAlignment, resetGridPosition })
   cursor: pointer;
   padding: 0;
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.swatch-check {
+  color: #fff;
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.8));
 }
 
 .color-swatch.active {
@@ -941,12 +923,6 @@ defineExpose({ imageRef, getGridAlignment, resetGridPosition })
   cursor: pointer;
 }
 
-.control-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
 /* Immersive：全屏画布模式 */
 .grid-align-editor.immersive {
   height: 100%;
@@ -957,10 +933,19 @@ defineExpose({ imageRef, getGridAlignment, resetGridPosition })
   min-height: 0;
 }
 
-.immersive .stage-bar {
-  padding: 8px 10px;
-  background: var(--sd-surface, #fff8ee);
-  border-bottom: 2px solid var(--sd-border-light, #c4a882);
+.framed.immersive .settings-panel {
+  border: none;
+  border-bottom: var(--sd-border-width) solid var(--sd-wood);
+  background: var(--sd-surface);
+}
+
+.framed.immersive .align-viewport {
+  flex: 1;
+  min-height: 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--sd-bg);
 }
 
 .immersive .align-viewport {
@@ -970,27 +955,6 @@ defineExpose({ imageRef, getGridAlignment, resetGridPosition })
   border: none;
 }
 
-.immersive .align-dock {
-  background: var(--sd-surface, #fff8ee);
-  border-top: 3px solid var(--sd-border, #8b6914);
-  box-shadow: 0 -4px 12px rgba(92, 64, 51, 0.08);
-}
-
-.immersive .dock-toggle {
-  border-top: none;
-  background: var(--sd-bg-alt, #e8d4a8);
-  color: var(--sd-text, #3e2723);
-  min-height: 36px;
-}
-
-.immersive .dock-body {
-  padding-bottom: 8px;
-}
-
-.immersive.expanded .dock-body {
-  padding-top: 0;
-}
-
 /* Pixel variant */
 .variant-pixel .field span,
 .variant-pixel .control-label {
@@ -998,13 +962,7 @@ defineExpose({ imageRef, getGridAlignment, resetGridPosition })
   color: var(--sd-text, #3e2723);
 }
 
-.variant-pixel .stage-hint,
-.variant-pixel .stage-meta {
-  color: var(--sd-text-muted, #7a6a52);
-}
-
-.variant-pixel .link-btn,
-.variant-pixel .lock-btn {
+.variant-pixel .link-btn {
   border-color: var(--sd-border-light, #c4a882);
   background: var(--sd-bg-panel, #fff8e7);
   color: var(--sd-text, #3e2723);
@@ -1012,15 +970,14 @@ defineExpose({ imageRef, getGridAlignment, resetGridPosition })
   border-radius: 0;
 }
 
-.variant-pixel .dock-extra {
-  border-top-color: var(--sd-border-light, #c4a882);
-}
-
-.variant-pixel .link-btn.linked,
-.variant-pixel .lock-btn.locked {
+.variant-pixel .link-btn.linked {
   background: var(--sd-primary, #5fa044);
   border-color: var(--sd-border, #8b6914);
   color: #fff;
+}
+
+.variant-pixel .control-actions {
+  border-top-color: var(--sd-border-light, #c4a882);
 }
 
 .variant-pixel .align-viewport {
@@ -1031,21 +988,12 @@ defineExpose({ imageRef, getGridAlignment, resetGridPosition })
   box-shadow: inset 3px 3px 0 0 rgba(92, 64, 51, 0.1);
 }
 
+.framed.immersive .align-viewport {
+  box-shadow: none;
+}
+
 .variant-pixel .color-swatch {
   border-color: var(--sd-border-light, #c4a882);
   box-shadow: 1px 1px 0 0 var(--sd-shadow, #5c4033);
-}
-
-/* 桌面端非 immersive 也画布优先 */
-.grid-align-editor:not(.immersive) .align-viewport {
-  min-height: 280px;
-}
-
-.grid-align-editor:not(.immersive) .dock-toggle {
-  display: none;
-}
-
-.grid-align-editor:not(.immersive) .dock-body {
-  padding-top: 8px;
 }
 </style>

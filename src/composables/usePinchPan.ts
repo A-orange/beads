@@ -3,6 +3,7 @@ import { ref, computed, nextTick, watch, type Ref } from 'vue'
 interface PinchPanOptions {
   minScale?: number
   maxScale?: number
+  contentSize?: Ref<{ w: number; h: number } | null>
 }
 
 function touchDistance(touches: TouchList) {
@@ -39,14 +40,17 @@ export function usePinchPan(
 
   function getBounds() {
     const container = containerRef.value
-    const content = contentRef.value
-    if (!container || !content) return null
+    if (!container) return null
+
+    const measured = options.contentSize?.value
+    const contentW = measured?.w ?? contentRef.value?.offsetWidth ?? 0
+    const contentH = measured?.h ?? contentRef.value?.offsetHeight ?? 0
 
     return {
       cw: container.clientWidth,
       ch: container.clientHeight,
-      contentW: content.offsetWidth,
-      contentH: content.offsetHeight,
+      contentW,
+      contentH,
     }
   }
 
@@ -65,6 +69,47 @@ export function usePinchPan(
 
   function clampScale(value: number) {
     return Math.min(maxScale, Math.max(minScale, value))
+  }
+
+  function zoomAt(clientX: number, clientY: number, factor: number) {
+    const container = containerRef.value
+    if (!container || factor === 1) return
+
+    const rect = container.getBoundingClientRect()
+    const anchorX = clientX - rect.left
+    const anchorY = clientY - rect.top
+    const nextScale = clampScale(scale.value * factor)
+    const ratio = nextScale / scale.value
+
+    translateX.value = anchorX - ratio * (anchorX - translateX.value)
+    translateY.value = anchorY - ratio * (anchorY - translateY.value)
+    scale.value = nextScale
+  }
+
+  function onWheel(event: WheelEvent) {
+    event.preventDefault()
+    const factor = Math.exp(-event.deltaY * 0.002)
+    zoomAt(event.clientX, event.clientY, factor)
+  }
+
+  function onMouseDown(event: MouseEvent) {
+    if (event.button !== 0) return
+    isPanning = true
+    lastX = event.clientX
+    lastY = event.clientY
+    event.preventDefault()
+  }
+
+  function onMouseMove(event: MouseEvent) {
+    if (!isPanning) return
+    translateX.value += event.clientX - lastX
+    translateY.value += event.clientY - lastY
+    lastX = event.clientX
+    lastY = event.clientY
+  }
+
+  function onMouseUp() {
+    isPanning = false
   }
 
   function onTouchStart(event: TouchEvent) {
@@ -125,14 +170,10 @@ export function usePinchPan(
   }
 
   function bindFitWhenReady(getSignal: () => unknown) {
-    watch(
-      getSignal,
-      async () => {
-        await nextTick()
-        requestAnimationFrame(() => fitToView())
-      },
-      { deep: true },
-    )
+    watch(getSignal, async () => {
+      await nextTick()
+      requestAnimationFrame(() => fitToView())
+    })
   }
 
   return {
@@ -145,6 +186,10 @@ export function usePinchPan(
     onTouchStart,
     onTouchMove,
     onTouchEnd,
+    onWheel,
+    onMouseDown,
+    onMouseMove,
+    onMouseUp,
     bindFitWhenReady,
   }
 }

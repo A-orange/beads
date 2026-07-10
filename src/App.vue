@@ -1,19 +1,22 @@
 <script setup lang="ts">
-import { ref, computed, onUnmounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { Button, Tag, TextOutline } from '@pixelium/web-vue/es'
 import ImageUpload from './components/ImageUpload.vue'
 import GridAlignEditor from './components/GridAlignEditor.vue'
-import BeadGrid from './components/BeadGrid.vue'
-import ColorPanel from './components/ColorPanel.vue'
 import MobileStepHeader from './components/MobileStepHeader.vue'
 import MobileResultView from './components/MobileResultView.vue'
-import { useIsMobile } from './composables/useIsMobile'
+import PatternSheetView from './components/PatternSheetView.vue'
+import SdIcon from './components/SdIcon.vue'
 import { PixelMessage } from './utils/pixelMessage'
 import { analyzeAlignedGrid } from './utils/imageAnalysis'
-import type { BeadCell } from './utils/imageAnalysis'
+import type { BeadCell, GridAlignment } from './utils/imageAnalysis'
+import type { BeadColor } from './data/beadColor'
+import { initPalette, usePaletteState } from './services/paletteService'
+import { usePreventKeyboardScroll } from './composables/usePreventKeyboardScroll'
+import { mergeBackgroundColors } from './utils/beadColorRoles'
 
-const { isMobile } = useIsMobile()
+const { activeLabel } = usePaletteState()
+usePreventKeyboardScroll()
 
 const WIZARD_STEPS = ['上传图纸', '对齐网格', '查看结果']
 
@@ -28,7 +31,14 @@ const resultRows = ref(0)
 const resultCols = ref(0)
 const cells = ref<BeadCell[]>([])
 const colorVisibility = ref(new Map<string, boolean>())
+const backgroundColors = ref(new Set<string>())
 const gridEditorRef = ref<InstanceType<typeof GridAlignEditor> | null>(null)
+const sheetViewRef = ref<InstanceType<typeof PatternSheetView> | null>(null)
+const sheetFooterExpanded = ref(true)
+const sheetShowGrid = ref(true)
+const sheetShowCellLabels = ref(true)
+const analysisImageRef = ref<HTMLImageElement | null>(null)
+const savedAlignment = ref<GridAlignment | null>(null)
 const analyzing = ref(false)
 
 const hiddenColors = computed(() => {
@@ -56,6 +66,35 @@ function initColorVisibility(beadCells: BeadCell[]) {
   colorVisibility.value = map
 }
 
+function mergeColorVisibility(beadCells: BeadCell[]) {
+  const prev = colorVisibility.value
+  const map = new Map<string, boolean>()
+  for (const cell of beadCells) {
+    if (!map.has(cell.color.tag)) {
+      map.set(cell.color.tag, prev.get(cell.color.tag) ?? true)
+    }
+  }
+  colorVisibility.value = map
+}
+
+function waitForImage(img: HTMLImageElement) {
+  if (img.complete && img.naturalWidth) return Promise.resolve()
+  return new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve()
+    img.onerror = () => reject(new Error('图片加载失败'))
+  })
+}
+
+async function resolveAnalysisImage(): Promise<HTMLImageElement | null> {
+  const editorImg = gridEditorRef.value?.imageRef
+  if (editorImg?.naturalWidth) return editorImg
+
+  const cached = analysisImageRef.value
+  if (!cached) return null
+  await waitForImage(cached)
+  return cached.naturalWidth ? cached : null
+}
+
 function onUploaded(url: string) {
   if (imageUrl.value) URL.revokeObjectURL(imageUrl.value)
   imageUrl.value = url
@@ -67,50 +106,44 @@ function onUploaded(url: string) {
   mobileStep.value = 1
 }
 
-async function runAnalyze(): Promise<boolean> {
-  const img = gridEditorRef.value?.imageRef
-  if (!img?.naturalWidth) {
-    const msg = '图片尚未加载完成'
-    if (isMobile.value) PixelMessage.warning(msg)
-    else ElMessage.warning(msg)
-    return false
-  }
+async function runAnalyze(options?: { preserveVisibility?: boolean }): Promise<boolean> {
   if (!gridRows.value || !gridCols.value) {
-    const msg = '请先设置行列数'
-    if (isMobile.value) PixelMessage.warning(msg)
-    else ElMessage.warning(msg)
+    PixelMessage.warning('请先设置行列数')
     return false
   }
   if (!cellWidth.value || !cellHeight.value) {
-    const msg = '请先设置格子宽高'
-    if (isMobile.value) PixelMessage.warning(msg)
-    else ElMessage.warning(msg)
+    PixelMessage.warning('请先设置格子宽高')
     return false
   }
 
   analyzing.value = true
   try {
-    await new Promise((r) => requestAnimationFrame(r))
-    const alignment = gridEditorRef.value?.getGridAlignment?.() ?? {
-      offsetX: 0,
-      offsetY: 0,
-      cellWidth: 0,
-      cellHeight: 0,
-      imageOffsetX: 0,
-      imageOffsetY: 0,
-      imageScale: 1,
-      gridScale: 1,
+    const img = await resolveAnalysisImage()
+    if (!img?.naturalWidth) {
+      PixelMessage.warning('图片尚未加载完成')
+      return false
     }
+
+    await new Promise((r) => requestAnimationFrame(r))
+
+    const alignment =
+      gridEditorRef.value?.getGridAlignment?.() ?? savedAlignment.value
+    if (!alignment?.cellWidth || !alignment?.cellHeight) {
+      PixelMessage.warning('缺少网格对齐数据')
+      return false
+    }
+    savedAlignment.value = alignment
+
     const result = analyzeAlignedGrid(img, gridRows.value, gridCols.value, alignment)
     resultRows.value = result.rows
     resultCols.value = result.cols
     cells.value = result.cells
-    initColorVisibility(result.cells)
+    if (options?.preserveVisibility) mergeColorVisibility(result.cells)
+    else initColorVisibility(result.cells)
+    backgroundColors.value = mergeBackgroundColors(backgroundColors.value, result.cells)
     return true
   } catch (e) {
-    const msg = '分析失败：' + (e instanceof Error ? e.message : '未知错误')
-    if (isMobile.value) PixelMessage.error(msg)
-    else ElMessage.error(msg)
+    PixelMessage.error('分析失败：' + (e instanceof Error ? e.message : '未知错误'))
     return false
   } finally {
     analyzing.value = false
@@ -119,20 +152,22 @@ async function runAnalyze(): Promise<boolean> {
 
 async function analyzeAndShowResult() {
   const ok = await runAnalyze()
-  if (ok && isMobile.value) {
+  if (ok) {
     mobileStep.value = 2
     PixelMessage.success(`分析完成，共 ${cells.value.length} 颗豆`)
-  } else if (ok) {
-    ElMessage.success(`分析完成：${resultRows.value} 行 × ${resultCols.value} 列`)
   }
-}
-
-async function handleDesktopAnalyze() {
-  await runAnalyze()
 }
 
 function mobilePrev() {
   if (mobileStep.value > 0) mobileStep.value--
+}
+
+function completeAndShowSheet() {
+  mobileStep.value = 3
+}
+
+function backToEdit() {
+  mobileStep.value = 2
 }
 
 function resetWizard() {
@@ -148,6 +183,8 @@ function resetWizard() {
   resultCols.value = 0
   cells.value = []
   colorVisibility.value = new Map()
+  backgroundColors.value = new Set()
+  savedAlignment.value = null
 }
 
 function onToggleColor(tag: string, visible: boolean) {
@@ -155,11 +192,59 @@ function onToggleColor(tag: string, visible: boolean) {
   colorVisibility.value = new Map(colorVisibility.value)
 }
 
-function onToggleAll(visible: boolean) {
+function onToggleBackground(tag: string, isBackground: boolean) {
+  const next = new Set(backgroundColors.value)
+  if (isBackground) next.add(tag)
+  else next.delete(tag)
+  backgroundColors.value = next
+}
+
+function onReplaceColor(fromTag: string, newColor: BeadColor) {
+  if (fromTag === newColor.tag) return
+
+  const prevVisible = colorVisibility.value.get(fromTag) ?? true
+
+  cells.value = cells.value.map((cell) =>
+    cell.color.tag === fromTag ? { ...cell, color: newColor } : cell,
+  )
+
   const map = new Map(colorVisibility.value)
-  for (const key of map.keys()) map.set(key, visible)
+  map.delete(fromTag)
+  if (!map.has(newColor.tag)) map.set(newColor.tag, prevVisible)
+  colorVisibility.value = map
+
+  if (backgroundColors.value.has(fromTag)) {
+    const bg = new Set(backgroundColors.value)
+    bg.delete(fromTag)
+    bg.add(newColor.tag)
+    backgroundColors.value = bg
+  }
+}
+
+function onReplaceCells(
+  keys: Array<{ row: number; col: number }>,
+  newColor: BeadColor,
+) {
+  if (keys.length === 0) return
+  const keySet = new Set(keys.map((k) => `${k.row}-${k.col}`))
+  cells.value = cells.value.map((cell) =>
+    keySet.has(`${cell.row}-${cell.col}`) ? { ...cell, color: newColor } : cell,
+  )
+  const map = new Map(colorVisibility.value)
+  if (!map.has(newColor.tag)) map.set(newColor.tag, true)
   colorVisibility.value = map
 }
+
+async function onPaletteChange() {
+  if (cells.value.length > 0 && imageUrl.value && savedAlignment.value) {
+    const ok = await runAnalyze({ preserveVisibility: true })
+    if (ok) PixelMessage.success('已按新色卡重新匹配颜色')
+  }
+}
+
+onMounted(() => {
+  initPalette()
+})
 
 onUnmounted(() => {
   if (imageUrl.value) URL.revokeObjectURL(imageUrl.value)
@@ -167,149 +252,172 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <!-- 移动端 -->
-  <div v-if="isMobile" class="mobile-app" :class="{ 'is-align-step': mobileStep === 1 }">
-    <header v-if="mobileStep !== 1" class="mobile-title sd-panel-wood">
-      <TextOutline outline-width="2" color="var(--sd-wood)">
-        <h1 class="sd-heading">拼豆图纸分析</h1>
-      </TextOutline>
-      <Tag theme="success" size="small">MARD 221</Tag>
-    </header>
-
-    <MobileStepHeader v-if="mobileStep === 0" :current="mobileStep" :steps="WIZARD_STEPS" />
-
-    <p v-if="mobileStep === 0" class="guide-text sd-body sd-text-muted">{{ mobileGuideText }}</p>
-
-    <!-- 对齐步骤：全屏画布 -->
+  <div class="mobile-app" :class="{ 'is-align-step': mobileStep === 1 }">
     <Teleport to="body">
       <div v-if="mobileStep === 1 && imageUrl" class="align-fullscreen">
-        <header class="align-fullscreen-head sd-panel-wood">
-          <button type="button" class="align-back-btn" @click="mobilePrev">←</button>
-          <span class="align-fullscreen-title">对齐网格</span>
-          <Tag theme="success" size="small">2/3</Tag>
-        </header>
+        <section class="page-shell">
+          <GridAlignEditor
+            ref="gridEditorRef"
+            immersive
+            framed
+            :image-url="imageUrl"
+            v-model:rows="gridRows"
+            v-model:cols="gridCols"
+            v-model:cell-width="cellWidth"
+            v-model:cell-height="cellHeight"
+            v-model:grid-color="gridColor"
+          />
 
-        <GridAlignEditor
-          ref="gridEditorRef"
-          variant="pixel"
-          immersive
-          :image-url="imageUrl"
-          v-model:rows="gridRows"
-          v-model:cols="gridCols"
-          v-model:cell-width="cellWidth"
-          v-model:cell-height="cellHeight"
-          v-model:grid-color="gridColor"
-        />
-
-        <footer class="align-fullscreen-foot sd-panel">
-          <Button class="footer-btn" block variant="outline" theme="info" @click="mobilePrev">
-            重新上传
-          </Button>
-          <Button
-            class="footer-btn primary"
-            block
-            theme="primary"
-            :loading="analyzing"
-            :disabled="!gridRows || !gridCols || !cellWidth || !cellHeight"
-            @click="analyzeAndShowResult"
-          >
-            开始分析
-          </Button>
-        </footer>
+          <footer class="page-shell-foot">
+            <div class="foot-actions">
+              <Button class="footer-btn" block variant="outline" theme="info" @click="mobilePrev">
+                <span class="sd-btn-inner"><SdIcon name="upload" :size="14" />重新上传</span>
+              </Button>
+              <Button
+                class="footer-btn primary sd-btn-white"
+                block
+                theme="primary"
+                :loading="analyzing"
+                :disabled="!gridRows || !gridCols || !cellWidth || !cellHeight"
+                @click="analyzeAndShowResult"
+              >
+                <span class="sd-btn-inner"><SdIcon name="analyze" :size="14" />开始分析</span>
+              </Button>
+            </div>
+          </footer>
+        </section>
       </div>
     </Teleport>
 
-    <main class="mobile-main" :class="{ 'is-result': mobileStep >= 2 }">
-      <ImageUpload v-if="mobileStep === 0" variant="pixel" @uploaded="onUploaded" />
+    <img
+      v-if="imageUrl && mobileStep >= 2"
+      ref="analysisImageRef"
+      class="analysis-image-cache"
+      :src="imageUrl"
+      alt=""
+      decoding="async"
+    />
 
-      <MobileResultView
-        v-else-if="mobileStep >= 2"
-        :rows="resultRows"
-        :cols="resultCols"
-        :cells="cells"
-        :hidden-colors="hiddenColors"
-        :color-visibility="colorVisibility"
-        @toggle="onToggleColor"
-        @toggle-all="onToggleAll"
-      />
-    </main>
+    <main class="mobile-main">
+      <section v-if="mobileStep === 0" class="page-shell">
+        <header class="page-shell-head">
+          <TextOutline outline-width="2" color="var(--sd-wood)">
+            <h1 class="sd-heading">拼豆图纸分析</h1>
+          </TextOutline>
+          <Tag theme="success" size="small">{{ activeLabel }}</Tag>
+        </header>
 
-    <footer v-if="mobileStep !== 1" class="mobile-footer sd-panel">
-      <template v-if="mobileStep === 0">
-        <p class="footer-tip sd-body sd-text-muted">上传后进入对齐步骤</p>
-      </template>
+        <MobileStepHeader framed :current="mobileStep" :steps="WIZARD_STEPS" />
 
-      <template v-else>
-        <Button class="footer-btn" block variant="outline" theme="notice" @click="mobileStep = 1">
-          返回调整
-        </Button>
-        <Button class="footer-btn primary" block theme="primary" @click="resetWizard">
-          重新开始
-        </Button>
-      </template>
-    </footer>
-  </div>
-
-  <!-- 桌面端 -->
-  <div v-else class="desktop-app">
-    <header class="app-header">
-      <h1>拼豆图纸分析器</h1>
-      <p class="subtitle">上传图纸 → 设置行列数、格子宽高并对齐网格 → 分析 MARD 221 标准色</p>
-    </header>
-
-    <div v-if="!imageUrl" class="desktop-upload">
-      <ImageUpload @uploaded="onUploaded" />
-    </div>
-
-    <div v-else class="main-layout">
-      <section class="panel source-panel">
-        <div class="panel-head">
-          <h2>对齐网格</h2>
-          <el-button size="small" @click="resetWizard">重新上传</el-button>
-        </div>
-        <GridAlignEditor
-          ref="gridEditorRef"
-          immersive
-          :image-url="imageUrl"
-          v-model:rows="gridRows"
-          v-model:cols="gridCols"
-          v-model:cell-width="cellWidth"
-          v-model:cell-height="cellHeight"
-          v-model:grid-color="gridColor"
-        />
-        <div class="panel-actions">
-          <el-button
-            type="primary"
-            :loading="analyzing"
-            :disabled="!gridRows || !gridCols || !cellWidth || !cellHeight"
-            @click="handleDesktopAnalyze"
-          >
-            分析颜色
-          </el-button>
+        <div class="page-shell-body">
+          <p class="page-shell-guide">{{ mobileGuideText }}</p>
+          <ImageUpload framed @uploaded="onUploaded" />
         </div>
       </section>
 
-      <section class="panel grid-panel">
-        <h2>拼豆网格</h2>
-        <div v-loading="analyzing" class="grid-container">
-          <BeadGrid
-            :rows="resultRows"
-            :cols="resultCols"
-            :cells="cells"
-            :hidden-colors="hiddenColors"
-          />
-        </div>
-      </section>
-
-      <aside class="panel side-panel">
-        <ColorPanel
+      <section v-else-if="mobileStep === 2" class="page-shell">
+        <MobileResultView
+          :rows="resultRows"
+          :cols="resultCols"
           :cells="cells"
+          :hidden-colors="hiddenColors"
+          :background-colors="backgroundColors"
           :color-visibility="colorVisibility"
           @toggle="onToggleColor"
-          @toggle-all="onToggleAll"
+          @toggle-background="onToggleBackground"
+          @replace-color="onReplaceColor"
+          @replace-cells="onReplaceCells"
+          @palette-change="onPaletteChange"
         />
-      </aside>
-    </div>
+
+        <footer class="page-shell-foot">
+          <div class="foot-actions">
+            <Button class="footer-btn" block variant="outline" theme="notice" @click="mobileStep = 1">
+              <span class="sd-btn-inner"><SdIcon name="arrow-left" :size="14" />返回调整</span>
+            </Button>
+            <Button class="footer-btn primary sd-btn-white" block theme="primary" @click="completeAndShowSheet">
+              <span class="sd-btn-inner"><SdIcon name="check" :size="14" />完成</span>
+            </Button>
+          </div>
+        </footer>
+      </section>
+
+      <section v-else-if="mobileStep === 3" class="page-shell">
+        <header class="page-shell-head">
+          <h1 class="sd-heading">拼豆图纸</h1>
+          <Tag theme="success" size="small">{{ activeLabel }}</Tag>
+        </header>
+
+        <PatternSheetView
+          ref="sheetViewRef"
+          framed
+          v-model:show-grid="sheetShowGrid"
+          v-model:show-cell-labels="sheetShowCellLabels"
+          :title="activeLabel"
+          :rows="resultRows"
+          :cols="resultCols"
+          :cells="cells"
+          :hidden-colors="hiddenColors"
+          :background-colors="backgroundColors"
+          @toggle="onToggleColor"
+        />
+
+        <footer class="page-shell-foot" :class="{ 'is-collapsed': !sheetFooterExpanded }">
+          <button
+            type="button"
+            class="page-shell-foot-toggle"
+            @click="sheetFooterExpanded = !sheetFooterExpanded"
+          >
+            <span class="page-shell-foot-bar" />
+          </button>
+          <div v-show="sheetFooterExpanded" class="sheet-foot-body">
+            <div class="sheet-tool-row">
+              <Button
+                class="footer-btn"
+                block
+                variant="outline"
+                theme="info"
+                @click="sheetShowGrid = !sheetShowGrid"
+              >
+                <span class="sd-btn-inner">
+                  <SdIcon :name="sheetShowGrid ? 'grid-off' : 'grid'" :size="14" />
+                  {{ sheetShowGrid ? '隐藏网格' : '显示网格' }}
+                </span>
+              </Button>
+              <Button
+                class="footer-btn"
+                block
+                variant="outline"
+                theme="info"
+                @click="sheetShowCellLabels = !sheetShowCellLabels"
+              >
+                <span class="sd-btn-inner">
+                  <SdIcon :name="sheetShowCellLabels ? 'text-off' : 'text'" :size="14" />
+                  {{ sheetShowCellLabels ? '隐藏文字' : '显示文字' }}
+                </span>
+              </Button>
+            </div>
+            <div class="sheet-tool-row">
+              <Button class="footer-btn" block variant="outline" theme="notice" @click="sheetViewRef?.exportSheet()">
+                <span class="sd-btn-inner"><SdIcon name="download" :size="14" />导出</span>
+              </Button>
+              <Button class="footer-btn" block variant="outline" theme="info" @click="backToEdit">
+                <span class="sd-btn-inner"><SdIcon name="edit" :size="14" />返回编辑</span>
+              </Button>
+            </div>
+            <Button
+              class="footer-btn footer-btn-restart sd-btn-white"
+              block
+              theme="primary"
+              size="large"
+              @click="resetWizard"
+            >
+              <span class="sd-btn-inner"><SdIcon name="refresh" :size="14" />重新开始</span>
+            </Button>
+          </div>
+        </footer>
+      </section>
+    </main>
   </div>
 </template>
 
@@ -317,233 +425,90 @@ onUnmounted(() => {
 .mobile-app {
   display: flex;
   flex-direction: column;
-  padding-bottom: env(safe-area-inset-bottom);
-}
-
-.mobile-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin: 10px 12px 0;
-  padding: 10px 14px;
-  gap: 12px;
-  flex-shrink: 0;
-}
-
-.mobile-title h1 {
-  font-size: 13px;
-}
-
-.guide-text {
-  margin: 0;
-  padding: 6px 16px 10px;
-  text-align: center;
-  flex-shrink: 0;
+  height: 100%;
+  overflow: hidden;
 }
 
 .mobile-main {
   flex: 1;
   min-height: 0;
-  padding: 0 12px 8px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
-.mobile-main.is-result {
-  padding: 0 0 8px;
-}
-
-.mobile-footer {
+.foot-actions {
   display: flex;
   gap: 10px;
-  margin: 0 12px calc(10px + env(safe-area-inset-bottom));
-  padding: 10px 12px;
-  flex-shrink: 0;
-}
-
-.footer-tip {
-  flex: 1;
-  margin: 0;
-  text-align: center;
-  line-height: 40px;
+  width: 100%;
 }
 
 .footer-btn {
   flex: 1;
 }
 
-.source-panel :deep(.grid-align-editor) {
-  padding: 0 12px 12px;
-  flex: 1;
-  min-height: 0;
-}
-
 .footer-btn.primary {
   flex: 1.4;
 }
 
-/* 对齐全屏层 */
 .align-fullscreen {
   position: fixed;
-  inset: 0;
+  top: var(--vv-top, 0px);
+  left: var(--vv-left, 0px);
+  width: var(--vv-width, 100%);
+  height: var(--vv-height, 100dvh);
   z-index: 200;
   display: flex;
   flex-direction: column;
+  padding: 5px;
+  padding-bottom: calc(5px + env(safe-area-inset-bottom, 0px));
   background: var(--sd-bg, #f5e6c8);
-  padding-bottom: env(safe-area-inset-bottom);
+  overflow: hidden;
 }
 
-.align-fullscreen-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  flex-shrink: 0;
-  margin: 0;
-  border-radius: 0;
-  border-left: none;
-  border-right: none;
-  border-top: none;
-}
-
-.align-back-btn {
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  font-weight: 700;
-  border: 2px solid var(--sd-border, #8b6914);
-  background: var(--sd-surface, #fff8ee);
-  color: var(--sd-text, #3e2723);
-  cursor: pointer;
-  box-shadow: 2px 2px 0 0 var(--sd-shadow, #5c4033);
-  flex-shrink: 0;
-}
-
-.align-fullscreen-title {
-  flex: 1;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--sd-text, #3e2723);
-}
-
-.align-fullscreen .grid-align-editor {
+.align-fullscreen .page-shell {
   flex: 1;
   min-height: 0;
-}
-
-.align-fullscreen-foot {
-  display: flex;
-  gap: 10px;
-  padding: 10px 12px;
-  flex-shrink: 0;
   margin: 0;
-  border-radius: 0;
-  border-left: none;
-  border-right: none;
-  border-bottom: none;
 }
 
 .mobile-app.is-align-step {
   overflow: hidden;
 }
 
-.desktop-app {
-  min-height: 100vh;
+.analysis-image-cache {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.sheet-foot-body {
   display: flex;
   flex-direction: column;
-  padding: 16px 20px;
-  box-sizing: border-box;
+  gap: 8px;
 }
 
-.app-header {
-  margin-bottom: 12px;
-}
-
-.app-header h1 {
-  margin: 0;
-  font-size: 22px;
-  font-weight: 700;
-}
-
-.subtitle {
-  margin: 4px 0 0;
-  font-size: 13px;
-  color: #909399;
-}
-
-.desktop-upload {
-  flex: 1;
+.sheet-tool-row {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 400px;
+  gap: 8px;
+  width: 100%;
 }
 
-.main-layout {
-  flex: 1;
-  display: grid;
-  grid-template-columns: 1.4fr 1fr 260px;
-  gap: 16px;
-  min-height: 0;
+.footer-btn-restart {
+  width: 100%;
+  min-height: var(--sd-touch-min, 44px);
 }
 
-.panel {
-  background: #fff;
-  border-radius: 8px;
-  border: 1px solid #e4e7ed;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
+:deep(.px-button.sd-btn-white) {
+  --text-color: #fff !important;
+  color: #fff !important;
 }
 
-.source-panel {
-  min-height: calc(100vh - 120px);
-}
-
-.panel-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  border-bottom: 1px solid #f0f0f0;
-}
-
-.panel h2 {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: #606266;
-}
-
-.panel-head h2 {
-  padding: 0;
-  border: none;
-}
-
-.source-panel :deep(.grid-align-editor) {
-  padding: 0 16px;
-  flex: 1;
-  min-height: 0;
-}
-
-.panel-actions {
-  padding: 12px 16px;
-  border-top: 1px solid #f0f0f0;
-}
-
-.grid-container {
-  flex: 1;
-  overflow: auto;
-  min-height: 0;
-}
-
-.side-panel {
-  border: none;
-  background: transparent;
+:deep(.px-button.sd-btn-white .sd-btn-inner),
+:deep(.px-button.sd-btn-white .sd-icon) {
+  color: #fff !important;
 }
 </style>

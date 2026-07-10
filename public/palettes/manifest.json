@@ -1,0 +1,65 @@
+{
+  "generatedAt": "2026-07-10T08:31:08.691Z",
+  "palettes": [
+    {
+      "id": "mard-24",
+      "brand": "mard",
+      "label": "24色套装",
+      "file": "mard-24.json"
+    },
+    {
+      "id": "mard-48",
+      "brand": "mard",
+      "label": "48色套装",
+      "file": "mard-48.json"
+    },
+    {
+      "id": "mard-72",
+      "brand": "mard",
+      "label": "72色套装",
+      "file": "mard-72.json"
+    },
+    {
+      "id": "mard-221",
+      "brand": "mard",
+      "label": "221色",
+      "file": "mard-221.json"
+    },
+    {
+      "id": "mard-291",
+      "brand": "mard",
+      "label": "291全色",
+      "file": "mard-291.json"
+    },
+    {
+      "id": "coco-291",
+      "brand": "coco",
+      "label": "291色",
+      "file": "coco-291.json"
+    },
+    {
+      "id": "huangdoudou-291",
+      "brand": "huangdoudou",
+      "label": "291色",
+      "file": "huangdoudou-291.json"
+    },
+    {
+      "id": "manman-278",
+      "brand": "manman",
+      "label": "278色",
+      "file": "manman-278.json"
+    },
+    {
+      "id": "mixiaowo-290",
+      "brand": "mixiaowo",
+      "label": "290色",
+      "file": "mixiaowo-290.json"
+    },
+    {
+      "id": "panpan-289",
+      "brand": "panpan",
+      "label": "289色",
+      "file": "panpan-289.json"
+    }
+  ]
+}

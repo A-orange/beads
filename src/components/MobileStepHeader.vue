@@ -5,13 +5,15 @@ import { Badge } from '@pixelium/web-vue/es'
 const props = defineProps<{
   current: number
   steps: string[]
+  /** 嵌入 page-shell 时去掉独立外框 */
+  framed?: boolean
 }>()
 
 const progress = computed(() => ((props.current + 1) / props.steps.length) * 100)
 </script>
 
 <template>
-  <div class="step-header sd-panel">
+  <div class="step-header" :class="{ framed }">
     <div class="step-meta">
       <span class="step-counter">STEP {{ current + 1 }}/{{ steps.length }}</span>
       <Badge :value="`${current + 1}`" theme="primary" />
@@ -45,6 +47,20 @@ const progress = computed(() => ((props.current + 1) / props.steps.length) * 100
   margin: 12px 16px 0;
   padding: 12px;
   flex-shrink: 0;
+  background: var(--sd-surface);
+  border: var(--sd-border-width) solid var(--sd-border);
+  border-radius: var(--sd-radius);
+  box-shadow: var(--sd-shadow-offset) var(--sd-shadow-offset) 0 0 var(--sd-shadow);
+}
+
+.step-header.framed {
+  margin: 0;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  border-bottom: 1px dashed var(--sd-border-light);
+  background: var(--sd-surface);
 }
 
 .step-meta {

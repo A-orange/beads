@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SdIcon from './SdIcon.vue'
 import { ref, watch, computed } from 'vue'
 
 const props = withDefaults(
@@ -16,7 +17,7 @@ const props = withDefaults(
   {
     min: 0,
     max: 9999,
-    variant: 'default',
+    variant: 'pixel',
     compact: false,
     decimals: 0,
   },
@@ -135,7 +136,9 @@ function decrease() {
 
 <template>
   <div class="numeric-stepper" :class="[`variant-${variant}`, { compact }]">
-    <button type="button" class="step-btn" aria-label="减少" @click="decrease">−</button>
+    <button type="button" class="step-btn" aria-label="减少" @click="decrease">
+      <SdIcon name="minus" :size="14" />
+    </button>
     <input
       class="step-input"
       type="text"
@@ -150,7 +153,9 @@ function decrease() {
       @input="onInput"
       @blur="onBlur"
     />
-    <button type="button" class="step-btn" aria-label="增加" @click="increase">+</button>
+    <button type="button" class="step-btn" aria-label="增加" @click="increase">
+      <SdIcon name="plus" :size="14" />
+    </button>
   </div>
 </template>
 
@@ -172,12 +177,14 @@ function decrease() {
   border: none;
   background: #f5f7fa;
   color: #606266;
-  font-size: 18px;
   line-height: 1;
   cursor: pointer;
   padding: 0;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .step-btn:active {
@@ -191,7 +198,7 @@ function decrease() {
   border-left: 1px solid #dcdfe6;
   border-right: 1px solid #dcdfe6;
   text-align: center;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   color: #303133;
   background: #fff;
@@ -226,7 +233,7 @@ function decrease() {
   background: var(--sd-surface, #fff8ee);
   color: var(--sd-text, #3e2723);
   font-family: 'Fusion Pixel Zh_hans', 'Cabin', sans-serif;
-  font-size: 13px;
+  font-size: 16px;
 }
 
 .numeric-stepper.compact {
@@ -239,7 +246,7 @@ function decrease() {
 }
 
 .numeric-stepper.compact .step-input {
-  font-size: 12px;
+  font-size: 16px;
   padding: 0 2px;
 }
 
@@ -253,6 +260,6 @@ function decrease() {
 }
 
 .variant-pixel.compact .step-input {
-  font-size: 11px;
+  font-size: 16px;
 }
 </style>
