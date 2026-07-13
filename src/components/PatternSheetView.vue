@@ -86,6 +86,7 @@ const colorUsages = computed<ColorUsage[]>(() => {
 })
 
 const {
+  scale,
   transformStyle,
   fitToView,
   onTouchStart,
@@ -215,6 +216,7 @@ defineExpose({
           :cell-size="CELL_SIZE"
           :show-grid="showGrid"
           :show-cell-labels="showCellLabels"
+          :zoom-scale="scale"
         />
       </div>
 

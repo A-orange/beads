@@ -13,16 +13,31 @@ const props = defineProps<{
   cellSize?: number
   showGrid?: boolean
   showCellLabels?: boolean
+  /** 外层 CSS zoom，用于提高 canvas 背板分辨率 */
+  zoomScale?: number
 }>()
 
 const CELL_SIZE = computed(() => props.cellSize ?? 16)
 const GUIDE_EVERY = 10
+/** 浏览器 canvas 边长上限保守值，避免超大网格 + 高倍缩放 OOM */
+const MAX_CANVAS_EDGE = 8192
+const MAX_RENDER_SCALE = 8
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 
 const gridSize = computed(() => {
   if (props.rows <= 0 || props.cols <= 0) return null
   return getBeadGridWorldSize(props.rows, props.cols, CELL_SIZE.value, { fourSideLabels: true })
+})
+
+/** 按缩放档位提高绘制精度，避免 pinch 过程中频繁改 canvas 尺寸 */
+const renderBoost = computed(() => {
+  const z = Math.max(1, props.zoomScale ?? 1)
+  const steps = [1, 1.5, 2, 3, 4, 6, 8]
+  for (let i = steps.length - 1; i >= 0; i--) {
+    if (z >= steps[i]!) return steps[i]!
+  }
+  return 1
 })
 
 let drawRaf = 0
@@ -35,6 +50,13 @@ function scheduleDraw() {
   })
 }
 
+function resolveDpr(width: number, height: number) {
+  const baseDpr = Math.min(window.devicePixelRatio || 1, 2)
+  const boost = Math.min(renderBoost.value, MAX_RENDER_SCALE)
+  const maxByEdge = Math.min(MAX_CANVAS_EDGE / width, MAX_CANVAS_EDGE / height)
+  return Math.max(1, Math.min(baseDpr * boost, maxByEdge))
+}
+
 function drawFrame() {
   const canvas = canvasRef.value
   const size = gridSize.value
@@ -43,7 +65,7 @@ function drawFrame() {
   const { width, height } = size
   if (width <= 0 || height <= 0) return
 
-  const dpr = Math.min(window.devicePixelRatio || 1, 2)
+  const dpr = resolveDpr(width, height)
   canvas.width = Math.round(width * dpr)
   canvas.height = Math.round(height * dpr)
   canvas.style.width = `${width}px`
@@ -86,6 +108,7 @@ watch(
       props.showGrid,
       props.showCellLabels,
       CELL_SIZE.value,
+      renderBoost.value,
     ] as const,
   scheduleDraw,
   { deep: true },
