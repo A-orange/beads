@@ -492,7 +492,6 @@ defineExpose({
   justify-content: center;
   padding: 20px 20px;
   box-sizing: border-box;
-  //background: rgb(247, 243, 223);
   /* 仅保留顶部撕痕阴影，边框改用真实 border，避免圆角缺色 */
   box-shadow: inset 0 4px 6px -3px rgba(61, 52, 40, 0.18);
 }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { Button, Title } from 'animal-island-vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { Button, Title, Loading } from 'animal-island-vue'
 import ImageUpload from './components/ImageUpload.vue'
 import GridAlignEditor from './components/GridAlignEditor.vue'
 import MobileStepHeader from './components/MobileStepHeader.vue'
@@ -41,7 +41,35 @@ const sheetShowGrid = ref(true)
 const sheetShowCellLabels = ref(true)
 const analysisImageRef = ref<HTMLImageElement | null>(null)
 const savedAlignment = ref<GridAlignment | null>(null)
-const analyzing = ref(false)
+const stepLoading = ref(false)
+const loadingMounted = ref(false)
+
+const pageLoading = computed(() => stepLoading.value)
+
+const STEP_LOADING_MIN_MS = 550
+
+watch(stepLoading, (active) => {
+  if (active) loadingMounted.value = true
+})
+
+async function withStepLoading(task: () => void | Promise<void>) {
+  if (stepLoading.value) return
+  stepLoading.value = true
+  const started = Date.now()
+  try {
+    await task()
+  } finally {
+    const remain = STEP_LOADING_MIN_MS - (Date.now() - started)
+    if (remain > 0) await new Promise((r) => setTimeout(r, remain))
+    stepLoading.value = false
+  }
+}
+
+async function goToStep(step: number) {
+  await withStepLoading(async () => {
+    mobileStep.value = step
+  })
+}
 
 const hiddenColors = computed(() => {
   const hidden = new Set<string>()
@@ -97,15 +125,17 @@ async function resolveAnalysisImage(): Promise<HTMLImageElement | null> {
   return cached.naturalWidth ? cached : null
 }
 
-function onUploaded(url: string) {
-  if (imageUrl.value) URL.revokeObjectURL(imageUrl.value)
-  imageUrl.value = url
-  gridRows.value = 0
-  gridCols.value = 0
-  cellWidth.value = 0
-  cellHeight.value = 0
-  gridColor.value = '#ffffff'
-  mobileStep.value = 1
+async function onUploaded(url: string) {
+  await withStepLoading(async () => {
+    if (imageUrl.value) URL.revokeObjectURL(imageUrl.value)
+    imageUrl.value = url
+    gridRows.value = 0
+    gridCols.value = 0
+    cellWidth.value = 0
+    cellHeight.value = 0
+    gridColor.value = '#ffffff'
+    mobileStep.value = 1
+  })
 }
 
 async function runAnalyze(options?: { preserveVisibility?: boolean }): Promise<boolean> {
@@ -118,7 +148,6 @@ async function runAnalyze(options?: { preserveVisibility?: boolean }): Promise<b
     return false
   }
 
-  analyzing.value = true
   try {
     const img = await resolveAnalysisImage()
     if (!img?.naturalWidth) {
@@ -147,46 +176,48 @@ async function runAnalyze(options?: { preserveVisibility?: boolean }): Promise<b
   } catch (e) {
     IslandMessage.error('分析失败：' + (e instanceof Error ? e.message : '未知错误'))
     return false
-  } finally {
-    analyzing.value = false
   }
 }
 
 async function analyzeAndShowResult() {
-  const ok = await runAnalyze()
-  if (ok) {
+  await withStepLoading(async () => {
+    const ok = await runAnalyze()
+    if (!ok) return
     mobileStep.value = 2
     IslandMessage.success(`分析完成，共 ${cells.value.length} 颗豆`)
-  }
+  })
 }
 
-function mobilePrev() {
-  if (mobileStep.value > 0) mobileStep.value--
+async function mobilePrev() {
+  if (mobileStep.value <= 0) return
+  await goToStep(mobileStep.value - 1)
 }
 
-function completeAndShowSheet() {
-  mobileStep.value = 3
+async function completeAndShowSheet() {
+  await goToStep(3)
 }
 
-function backToEdit() {
-  mobileStep.value = 2
+async function backToEdit() {
+  await goToStep(2)
 }
 
-function resetWizard() {
-  if (imageUrl.value) URL.revokeObjectURL(imageUrl.value)
-  imageUrl.value = null
-  mobileStep.value = 0
-  gridRows.value = 0
-  gridCols.value = 0
-  cellWidth.value = 0
-  cellHeight.value = 0
-  gridColor.value = '#ffffff'
-  resultRows.value = 0
-  resultCols.value = 0
-  cells.value = []
-  colorVisibility.value = new Map()
-  backgroundColors.value = new Set()
-  savedAlignment.value = null
+async function resetWizard() {
+  await withStepLoading(async () => {
+    if (imageUrl.value) URL.revokeObjectURL(imageUrl.value)
+    imageUrl.value = null
+    mobileStep.value = 0
+    gridRows.value = 0
+    gridCols.value = 0
+    cellWidth.value = 0
+    cellHeight.value = 0
+    gridColor.value = '#ffffff'
+    resultRows.value = 0
+    resultCols.value = 0
+    cells.value = []
+    colorVisibility.value = new Map()
+    backgroundColors.value = new Set()
+    savedAlignment.value = null
+  })
 }
 
 function onToggleColor(tag: string, visible: boolean) {
@@ -239,8 +270,10 @@ function onReplaceCells(
 
 async function onPaletteChange() {
   if (cells.value.length > 0 && imageUrl.value && savedAlignment.value) {
-    const ok = await runAnalyze({ preserveVisibility: true })
-    if (ok) IslandMessage.success('已按新色卡重新匹配颜色')
+    await withStepLoading(async () => {
+      const ok = await runAnalyze({ preserveVisibility: true })
+      if (ok) IslandMessage.success('已按新色卡重新匹配颜色')
+    })
   }
 }
 
@@ -255,6 +288,16 @@ onUnmounted(() => {
 
 <template>
   <div class="mobile-app" :class="{ 'is-align-step': mobileStep === 1 }">
+    <Teleport to="body">
+      <div
+        v-if="loadingMounted"
+        class="step-loading-overlay"
+        :class="{ 'is-active': pageLoading }"
+      >
+        <Loading :active="pageLoading" />
+      </div>
+    </Teleport>
+
     <Teleport to="body">
       <div v-if="mobileStep === 1 && imageUrl" class="align-fullscreen">
         <section class="page-shell">
@@ -280,8 +323,8 @@ onUnmounted(() => {
                 class="footer-btn primary"
                 block
                 type="primary"
-                :loading="analyzing"
-                :disabled="!gridRows || !gridCols || !cellWidth || !cellHeight"
+                :loading="pageLoading"
+                :disabled="pageLoading || !gridRows || !gridCols || !cellWidth || !cellHeight"
                 @click="analyzeAndShowResult"
               >
                 <span class="sd-btn-inner"><SdIcon name="analyze" :size="14" />开始分析</span>
@@ -335,7 +378,7 @@ onUnmounted(() => {
 
         <footer class="page-shell-foot">
           <div class="foot-actions">
-            <Button class="footer-btn" block type="default" @click="mobileStep = 1">
+            <Button class="footer-btn" block type="default" @click="goToStep(1)">
               <span class="sd-btn-inner"><SdIcon name="arrow-left" :size="14" />返回调整</span>
             </Button>
             <Button class="footer-btn primary" block type="primary" @click="completeAndShowSheet">
@@ -502,5 +545,27 @@ onUnmounted(() => {
 .footer-btn-restart {
   width: 100%;
   min-height: var(--sd-touch-min, 44px);
+}
+</style>
+
+<style>
+.step-loading-overlay {
+  position: fixed;
+  top: var(--vv-top, 0px);
+  left: var(--vv-left, 0px);
+  width: var(--vv-width, 100%);
+  height: var(--vv-height, 100dvh);
+  z-index: 3000;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.step-loading-overlay.is-active {
+  pointer-events: auto;
+}
+
+.step-loading-overlay > * {
+  width: 100%;
+  height: 100%;
 }
 </style>
