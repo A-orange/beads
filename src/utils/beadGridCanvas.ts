@@ -138,6 +138,8 @@ export interface DrawBeadGridOptions {
   showGrid?: boolean
   showCellLabels?: boolean
   backgroundColor?: string
+  /** 水平翻转色块布局，文字保持正向可读 */
+  mirrorX?: boolean
 }
 
 export function hitTestBeadCell(
@@ -180,6 +182,7 @@ export function drawBeadGrid(ctx: CanvasRenderingContext2D, options: DrawBeadGri
   const guideEvery = options.guideLineEvery ?? 0
   const showGrid = options.showGrid ?? true
   const showCellLabels = options.showCellLabels ?? true
+  const mirrorX = options.mirrorX ?? false
   const sheetBg = options.backgroundColor ?? '#fff'
   const { headerSize, width, height, gridOffsetX, gridOffsetY } = getBeadGridWorldSize(
     rows,
@@ -215,16 +218,17 @@ export function drawBeadGrid(ctx: CanvasRenderingContext2D, options: DrawBeadGri
 
     for (let row = range.rowStart; row <= range.rowEnd; row++) {
       for (let col = range.colStart; col <= range.colEnd; col++) {
+        const srcCol = mirrorX ? cols - 1 - col : col
         const x = gridOffsetX + col * cellSize
         const y = gridOffsetY + row * cellSize
-        const cell = cellMap.get(`${row}-${col}`)
+        const cell = cellMap.get(`${row}-${srcCol}`)
         const isBackground = cell ? isBackgroundCell(cell.color.tag, backgroundColors) : false
         const hidden = cell ? hiddenColors.has(cell.color.tag) : false
 
         ctx.fillStyle = isBackground ? sheetBg : hidden ? HIDDEN_FILL : cell ? cell.color.hex : EMPTY_FILL
         ctx.fillRect(x, y, cellSize, cellSize)
 
-        if (cell && !isBackground && selectedCells?.has(`${row}-${col}`)) {
+        if (cell && !isBackground && selectedCells?.has(`${row}-${srcCol}`)) {
           ctx.fillStyle = 'rgba(95, 160, 68, 0.38)'
           ctx.fillRect(x, y, cellSize, cellSize)
           ctx.strokeStyle = '#4a7c23'
@@ -249,7 +253,8 @@ export function drawBeadGrid(ctx: CanvasRenderingContext2D, options: DrawBeadGri
     ctx.lineWidth = Math.max(1.5, 2 / options.scale)
     ctx.setLineDash([5 / options.scale, 4 / options.scale])
     for (let col = guideEvery; col < cols; col += guideEvery) {
-      const x = gridOffsetX + col * cellSize
+      const visualCol = mirrorX ? cols - col : col
+      const x = gridOffsetX + visualCol * cellSize
       ctx.beginPath()
       ctx.moveTo(x, gridOffsetY)
       ctx.lineTo(x, gridH)
@@ -281,10 +286,11 @@ export function drawBeadGrid(ctx: CanvasRenderingContext2D, options: DrawBeadGri
 
   if (range.headerColStart <= range.headerColEnd) {
     for (let col = range.headerColStart; col <= range.headerColEnd; col++) {
+      const srcCol = mirrorX ? cols - 1 - col : col
       const x = gridOffsetX + col * cellSize + cellSize / 2
-      ctx.fillText(String(col + 1), x, headerSize / 2)
+      ctx.fillText(String(srcCol + 1), x, headerSize / 2)
       if (fourSide) {
-        ctx.fillText(String(col + 1), x, gridH + headerSize / 2)
+        ctx.fillText(String(srcCol + 1), x, gridH + headerSize / 2)
       }
     }
   }

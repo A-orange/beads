@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
-import { Button } from '@pixelium/web-vue/es'
+import { Button } from 'animal-island-vue'
 import NumericStepper from './NumericStepper.vue'
 import SdIcon from './SdIcon.vue'
 import { usePinchPan } from '../composables/usePinchPan'
@@ -659,13 +659,13 @@ defineExpose({ imageRef, getGridAlignment, resetGridPosition })
           </div>
 
           <div class="control-actions">
-            <Button size="small" variant="outline" theme="notice" @click="resetGridPosition">
+            <Button size="small" type="default" @click="resetGridPosition">
               <span class="sd-btn-inner"><SdIcon name="reset-grid" :size="12" />重置网格</span>
             </Button>
-            <Button size="small" variant="outline" theme="notice" @click="resetImageTransform">
+            <Button size="small" type="default" @click="resetImageTransform">
               <span class="sd-btn-inner"><SdIcon name="reset-image" :size="12" />重置图片</span>
             </Button>
-            <Button size="small" variant="outline" theme="info" @click="resetView(); scheduleDraw()">
+            <Button size="small" type="default" @click="resetView(); scheduleDraw()">
               <span class="sd-btn-inner"><SdIcon name="fit-view" :size="12" />适应窗口</span>
             </Button>
           </div>

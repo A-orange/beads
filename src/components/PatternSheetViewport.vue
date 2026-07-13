@@ -15,6 +15,8 @@ const props = defineProps<{
   showCellLabels?: boolean
   /** 外层 CSS zoom，用于提高 canvas 背板分辨率 */
   zoomScale?: number
+  /** 水平翻转色块，文字保持正向 */
+  mirrorX?: boolean
 }>()
 
 const CELL_SIZE = computed(() => props.cellSize ?? 16)
@@ -94,6 +96,7 @@ function drawFrame() {
     showGrid: props.showGrid !== false,
     showCellLabels: props.showCellLabels !== false,
     backgroundColor: SHEET_GRID_BG,
+    mirrorX: props.mirrorX === true,
   })
 }
 
@@ -107,6 +110,7 @@ watch(
       props.backgroundColors,
       props.showGrid,
       props.showCellLabels,
+      props.mirrorX,
       CELL_SIZE.value,
       renderBoost.value,
     ] as const,

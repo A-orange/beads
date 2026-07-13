@@ -211,28 +211,27 @@ function decrease() {
 
 .variant-pixel.numeric-stepper {
   height: 34px;
-  border: 2px solid var(--sd-border, #8b6914);
-  border-radius: 0;
-  box-shadow: 2px 2px 0 0 var(--sd-shadow, #5c4033);
-  background: var(--sd-surface, #fff8ee);
+  border: 2px solid var(--sd-border);
+  border-radius: 50px;
+  box-shadow: none;
+  background: var(--sd-surface);
 }
 
 .variant-pixel .step-btn {
   width: 32px;
-  background: var(--sd-bg-alt, #e8d4a8);
-  color: var(--sd-text, #3e2723);
-  font-family: 'Fusion Pixel Zh_hans', monospace, sans-serif;
+  background: var(--sd-bg);
+  color: #725d42;
+  border-radius: 50%;
 }
 
 .variant-pixel .step-btn:active {
-  background: var(--sd-surface-wood, #d4bc96);
+  background: var(--sd-bg-alt);
 }
 
 .variant-pixel .step-input {
-  border-color: var(--sd-border-light, #c4a882);
-  background: var(--sd-surface, #fff8ee);
-  color: var(--sd-text, #3e2723);
-  font-family: 'Fusion Pixel Zh_hans', 'Cabin', sans-serif;
+  border-color: var(--sd-border-light);
+  background: var(--sd-surface);
+  color: #725d42;
   font-size: 16px;
 }
 

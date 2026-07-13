@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { Button, Tag, TextOutline } from '@pixelium/web-vue/es'
+import { Button, Title } from 'animal-island-vue'
 import ImageUpload from './components/ImageUpload.vue'
 import GridAlignEditor from './components/GridAlignEditor.vue'
 import MobileStepHeader from './components/MobileStepHeader.vue'
 import MobileResultView from './components/MobileResultView.vue'
 import PatternSheetView from './components/PatternSheetView.vue'
+import IslandTag from './components/IslandTag.vue'
+import IslandDecorations from './components/IslandDecorations.vue'
 import SdIcon from './components/SdIcon.vue'
-import { PixelMessage } from './utils/pixelMessage'
+import { IslandMessage } from './utils/islandMessage'
 import { analyzeAlignedGrid } from './utils/imageAnalysis'
 import type { BeadCell, GridAlignment } from './utils/imageAnalysis'
 import type { BeadColor } from './data/beadColor'
@@ -108,11 +110,11 @@ function onUploaded(url: string) {
 
 async function runAnalyze(options?: { preserveVisibility?: boolean }): Promise<boolean> {
   if (!gridRows.value || !gridCols.value) {
-    PixelMessage.warning('请先设置行列数')
+    IslandMessage.warning('请先设置行列数')
     return false
   }
   if (!cellWidth.value || !cellHeight.value) {
-    PixelMessage.warning('请先设置格子宽高')
+    IslandMessage.warning('请先设置格子宽高')
     return false
   }
 
@@ -120,7 +122,7 @@ async function runAnalyze(options?: { preserveVisibility?: boolean }): Promise<b
   try {
     const img = await resolveAnalysisImage()
     if (!img?.naturalWidth) {
-      PixelMessage.warning('图片尚未加载完成')
+      IslandMessage.warning('图片尚未加载完成')
       return false
     }
 
@@ -129,7 +131,7 @@ async function runAnalyze(options?: { preserveVisibility?: boolean }): Promise<b
     const alignment =
       gridEditorRef.value?.getGridAlignment?.() ?? savedAlignment.value
     if (!alignment?.cellWidth || !alignment?.cellHeight) {
-      PixelMessage.warning('缺少网格对齐数据')
+      IslandMessage.warning('缺少网格对齐数据')
       return false
     }
     savedAlignment.value = alignment
@@ -143,7 +145,7 @@ async function runAnalyze(options?: { preserveVisibility?: boolean }): Promise<b
     backgroundColors.value = mergeBackgroundColors(backgroundColors.value, result.cells)
     return true
   } catch (e) {
-    PixelMessage.error('分析失败：' + (e instanceof Error ? e.message : '未知错误'))
+    IslandMessage.error('分析失败：' + (e instanceof Error ? e.message : '未知错误'))
     return false
   } finally {
     analyzing.value = false
@@ -154,7 +156,7 @@ async function analyzeAndShowResult() {
   const ok = await runAnalyze()
   if (ok) {
     mobileStep.value = 2
-    PixelMessage.success(`分析完成，共 ${cells.value.length} 颗豆`)
+    IslandMessage.success(`分析完成，共 ${cells.value.length} 颗豆`)
   }
 }
 
@@ -238,7 +240,7 @@ function onReplaceCells(
 async function onPaletteChange() {
   if (cells.value.length > 0 && imageUrl.value && savedAlignment.value) {
     const ok = await runAnalyze({ preserveVisibility: true })
-    if (ok) PixelMessage.success('已按新色卡重新匹配颜色')
+    if (ok) IslandMessage.success('已按新色卡重新匹配颜色')
   }
 }
 
@@ -256,6 +258,7 @@ onUnmounted(() => {
     <Teleport to="body">
       <div v-if="mobileStep === 1 && imageUrl" class="align-fullscreen">
         <section class="page-shell">
+          <IslandDecorations />
           <GridAlignEditor
             ref="gridEditorRef"
             immersive
@@ -270,13 +273,13 @@ onUnmounted(() => {
 
           <footer class="page-shell-foot">
             <div class="foot-actions">
-              <Button class="footer-btn" block variant="outline" theme="info" @click="mobilePrev">
+              <Button class="footer-btn" block type="default" @click="mobilePrev">
                 <span class="sd-btn-inner"><SdIcon name="upload" :size="14" />重新上传</span>
               </Button>
               <Button
-                class="footer-btn primary sd-btn-white"
+                class="footer-btn primary"
                 block
-                theme="primary"
+                type="primary"
                 :loading="analyzing"
                 :disabled="!gridRows || !gridCols || !cellWidth || !cellHeight"
                 @click="analyzeAndShowResult"
@@ -300,11 +303,10 @@ onUnmounted(() => {
 
     <main class="mobile-main">
       <section v-if="mobileStep === 0" class="page-shell">
+        <IslandDecorations />
         <header class="page-shell-head">
-          <TextOutline outline-width="2" color="var(--sd-wood)">
-            <h1 class="sd-heading">拼豆图纸分析</h1>
-          </TextOutline>
-          <Tag theme="success" size="small">{{ activeLabel }}</Tag>
+          <Title color="app-teal" size="middle">拼豆图纸分析</Title>
+          <IslandTag color="app-green">{{ activeLabel }}</IslandTag>
         </header>
 
         <MobileStepHeader framed :current="mobileStep" :steps="WIZARD_STEPS" />
@@ -316,6 +318,7 @@ onUnmounted(() => {
       </section>
 
       <section v-else-if="mobileStep === 2" class="page-shell">
+        <IslandDecorations />
         <MobileResultView
           :rows="resultRows"
           :cols="resultCols"
@@ -332,10 +335,10 @@ onUnmounted(() => {
 
         <footer class="page-shell-foot">
           <div class="foot-actions">
-            <Button class="footer-btn" block variant="outline" theme="notice" @click="mobileStep = 1">
+            <Button class="footer-btn" block type="default" @click="mobileStep = 1">
               <span class="sd-btn-inner"><SdIcon name="arrow-left" :size="14" />返回调整</span>
             </Button>
-            <Button class="footer-btn primary sd-btn-white" block theme="primary" @click="completeAndShowSheet">
+            <Button class="footer-btn primary" block type="primary" @click="completeAndShowSheet">
               <span class="sd-btn-inner"><SdIcon name="check" :size="14" />完成</span>
             </Button>
           </div>
@@ -343,9 +346,10 @@ onUnmounted(() => {
       </section>
 
       <section v-else-if="mobileStep === 3" class="page-shell">
+        <IslandDecorations :lottery-offset="false" />
         <header class="page-shell-head">
           <h1 class="sd-heading">拼豆图纸</h1>
-          <Tag theme="success" size="small">{{ activeLabel }}</Tag>
+          <IslandTag color="app-green">{{ activeLabel }}</IslandTag>
         </header>
 
         <PatternSheetView
@@ -375,8 +379,7 @@ onUnmounted(() => {
               <Button
                 class="footer-btn"
                 block
-                variant="outline"
-                theme="info"
+                type="default"
                 @click="sheetShowGrid = !sheetShowGrid"
               >
                 <span class="sd-btn-inner">
@@ -387,8 +390,7 @@ onUnmounted(() => {
               <Button
                 class="footer-btn"
                 block
-                variant="outline"
-                theme="info"
+                type="default"
                 @click="sheetShowCellLabels = !sheetShowCellLabels"
               >
                 <span class="sd-btn-inner">
@@ -398,17 +400,17 @@ onUnmounted(() => {
               </Button>
             </div>
             <div class="sheet-tool-row">
-              <Button class="footer-btn" block variant="outline" theme="notice" @click="sheetViewRef?.exportSheet()">
+              <Button class="footer-btn" block type="default" @click="sheetViewRef?.exportSheet()">
                 <span class="sd-btn-inner"><SdIcon name="download" :size="14" />导出</span>
               </Button>
-              <Button class="footer-btn" block variant="outline" theme="info" @click="backToEdit">
+              <Button class="footer-btn" block type="default" @click="backToEdit">
                 <span class="sd-btn-inner"><SdIcon name="edit" :size="14" />返回编辑</span>
               </Button>
             </div>
             <Button
-              class="footer-btn footer-btn-restart sd-btn-white"
+              class="footer-btn footer-btn-restart"
               block
-              theme="primary"
+              type="primary"
               size="large"
               @click="resetWizard"
             >
@@ -462,7 +464,7 @@ onUnmounted(() => {
   flex-direction: column;
   padding: 5px;
   padding-bottom: calc(5px + env(safe-area-inset-bottom, 0px));
-  background: var(--sd-bg, #f5e6c8);
+  background: transparent;
   overflow: hidden;
 }
 
@@ -500,15 +502,5 @@ onUnmounted(() => {
 .footer-btn-restart {
   width: 100%;
   min-height: var(--sd-touch-min, 44px);
-}
-
-:deep(.px-button.sd-btn-white) {
-  --text-color: #fff !important;
-  color: #fff !important;
-}
-
-:deep(.px-button.sd-btn-white .sd-btn-inner),
-:deep(.px-button.sd-btn-white .sd-icon) {
-  color: #fff !important;
 }
 </style>

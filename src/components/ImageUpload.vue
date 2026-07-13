@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Button } from '@pixelium/web-vue/es'
+import { Button } from 'animal-island-vue'
 import SdIcon from './SdIcon.vue'
 
 defineProps<{
@@ -52,7 +52,7 @@ function onFileChange(event: Event) {
       <p class="upload-title sd-heading">上传拼豆图纸</p>
       <p class="upload-desc sd-body sd-text-muted">支持 JPG、PNG 等常见图片格式</p>
       <p class="upload-tip sd-text-muted">上传后可在下一步对齐网格并匹配色号</p>
-      <Button block theme="primary" size="large" class="sd-btn-white" @click="openFilePicker">
+      <Button block type="primary" size="large" @click="openFilePicker">
         <span class="sd-btn-inner"><SdIcon name="image" :size="16" />选择图片</span>
       </Button>
     </div>
@@ -84,10 +84,9 @@ function onFileChange(event: Event) {
   min-height: 260px;
   justify-content: center;
   background: var(--sd-surface);
-  border: 2px solid var(--sd-border-light);
-  border-radius: 2px;
-  box-shadow: inset 2px 2px 0 0 rgba(92, 64, 51, 0.12);
-  border-style: dashed;
+  border: 2px dashed var(--sd-border-light);
+  border-radius: 20px;
+  box-shadow: inset 0 2px 4px rgba(114, 93, 66, 0.08);
 }
 
 .upload-inner.framed {
@@ -102,9 +101,9 @@ function onFileChange(event: Event) {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(95, 160, 68, 0.12);
+  background: var(--animal-primary-color-bg, #e6f9f6);
   border: 2px solid var(--sd-primary-light);
-  box-shadow: 2px 2px 0 0 var(--sd-shadow);
+  border-radius: 18px;
 }
 
 .upload-icon {
@@ -126,15 +125,5 @@ function onFileChange(event: Event) {
   font-size: 11px;
   font-family: var(--sd-font-body);
   line-height: 1.5;
-}
-
-:deep(.px-button.sd-btn-white) {
-  --text-color: #fff !important;
-  color: #fff !important;
-}
-
-:deep(.px-button.sd-btn-white .sd-btn-inner),
-:deep(.px-button.sd-btn-white .sd-icon) {
-  color: #fff !important;
 }
 </style>

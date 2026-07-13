@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Checkbox, Tag } from '@pixelium/web-vue/es'
+import { Checkbox } from 'animal-island-vue'
+import IslandTag from './IslandTag.vue'
 import PaletteSelector from './PaletteSelector.vue'
 import ColorPickDialog from './ColorPickDialog.vue'
 import SdIcon from './SdIcon.vue'
@@ -87,6 +88,10 @@ function onPickColor(color: BeadColor) {
 function toggleBackground(tag: string, isBackground: boolean) {
   emit('toggleBackground', tag, isBackground)
 }
+
+function onCheckboxChange(tag: string, values: Array<string | number>) {
+  emit('toggle', tag, values.includes(tag))
+}
 </script>
 
 <template>
@@ -95,7 +100,7 @@ function toggleBackground(tag: string, isBackground: boolean) {
       <span class="sd-drawer-handle-bar" />
       <SdIcon name="list" :size="14" />
       <span class="sd-drawer-handle-title">色卡清单</span>
-      <Tag theme="notice" size="small">{{ colorUsages.length }} 色</Tag>
+      <IslandTag color="app-yellow">{{ colorUsages.length }} 色</IslandTag>
       <span class="handle-meta sd-body">{{ visibleBeads }}/{{ cells.length }} 颗</span>
       <SdIcon :name="expanded ? 'chevron-down' : 'chevron-up'" :size="12" />
     </button>
@@ -111,11 +116,12 @@ function toggleBackground(tag: string, isBackground: boolean) {
         class="color-row sd-panel"
         :class="{ off: !item.visible, 'is-background': item.isBackground }"
       >
-        <div class="row-check">
+        <div class="row-check island-checkbox-solo">
           <Checkbox
-            variant="retro"
-            :model-value="item.visible"
-            @update:model-value="(val: boolean) => emit('toggle', item.color.tag, val)"
+            :model-value="item.visible ? [item.color.tag] : []"
+            :options="[{ label: '', value: item.color.tag }]"
+            size="small"
+            @update:model-value="onCheckboxChange(item.color.tag, $event)"
           />
         </div>
         <button type="button" class="row-color" @click="openPicker(item.color.tag)">
@@ -126,8 +132,8 @@ function toggleBackground(tag: string, isBackground: boolean) {
           />
           <span class="row-tag">{{ item.color.tag }}</span>
           <span class="row-hex sd-text-muted">{{ item.color.hex }}</span>
-          <Tag v-if="item.isBackground" theme="info" size="small" variant="plain">背景</Tag>
-          <Tag v-else theme="primary" size="small" variant="plain">{{ item.count }}</Tag>
+          <IslandTag v-if="item.isBackground" color="app-blue">背景</IslandTag>
+          <IslandTag v-else color="app-teal">{{ item.count }}</IslandTag>
         </button>
         <button
           type="button"
@@ -162,11 +168,10 @@ function toggleBackground(tag: string, isBackground: boolean) {
 }
 
 .color-drawer.framed {
-  background: linear-gradient(180deg, var(--sd-surface-wood) 0%, #c9ad82 100%);
+  background: transparent;
   border: none;
-  border-top: var(--sd-border-width) solid var(--sd-wood);
+  border-top: 1px solid rgba(114, 93, 66, 0.12);
   border-radius: 0;
-  box-shadow: none;
 }
 
 .color-drawer.framed .drawer-palette {
@@ -192,11 +197,6 @@ function toggleBackground(tag: string, isBackground: boolean) {
   color: var(--sd-text-muted);
 }
 
-.row-picker-icon {
-  flex-shrink: 0;
-  opacity: 0.55;
-}
-
 .drawer-palette {
   flex-shrink: 0;
   padding: 0 10px 10px;
@@ -218,7 +218,6 @@ function toggleBackground(tag: string, isBackground: boolean) {
   display: flex;
   align-items: stretch;
   gap: 8px;
-  box-shadow: 2px 2px 0 0 var(--sd-shadow);
 }
 
 .color-row.off {
@@ -236,6 +235,10 @@ function toggleBackground(tag: string, isBackground: boolean) {
   flex-shrink: 0;
 }
 
+.row-check :deep(span:empty) {
+  display: none;
+}
+
 .row-color {
   flex: 1;
   min-width: 0;
@@ -247,12 +250,12 @@ function toggleBackground(tag: string, isBackground: boolean) {
   background: transparent;
   cursor: pointer;
   font-family: inherit;
-  color: var(--sd-text);
+  color: #725d42;
   text-align: left;
 }
 
 .row-color:active {
-  background: rgba(95, 160, 68, 0.08);
+  background: rgba(25, 200, 185, 0.08);
 }
 
 .row-bg-btn {
@@ -264,32 +267,27 @@ function toggleBackground(tag: string, isBackground: boolean) {
   margin: 6px 6px 6px 0;
   padding: 0;
   border: 2px solid var(--sd-border-light);
-  background: var(--sd-surface);
+  border-radius: 12px;
+  background: var(--sd-bg);
   color: var(--sd-text-muted);
   cursor: pointer;
-  box-shadow: 1px 1px 0 0 var(--sd-shadow);
 }
 
 .row-bg-btn.active {
-  background: rgba(95, 160, 68, 0.18);
+  background: var(--animal-primary-color-bg, #e6f9f6);
   border-color: var(--sd-primary);
   color: var(--sd-primary-dark);
-}
-
-.row-bg-btn:active {
-  transform: translate(1px, 1px);
-  box-shadow: none;
 }
 
 .row-swatch {
   width: 22px;
   height: 22px;
   flex-shrink: 0;
+  border-radius: 8px;
 }
 
 .row-swatch.swatch-bg {
   opacity: 0.35;
-  box-shadow: inset 0 0 0 1px var(--sd-border-light);
 }
 
 .row-tag {
@@ -301,6 +299,5 @@ function toggleBackground(tag: string, isBackground: boolean) {
 .row-hex {
   flex: 1;
   font-size: 10px;
-  font-family: 'Cabin', monospace, sans-serif;
 }
 </style>

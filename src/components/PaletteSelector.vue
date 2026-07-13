@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { Select } from 'animal-island-vue'
 import { PALETTE_BRANDS, isPaletteAvailable } from '../data/paletteRegistry'
 import { usePaletteState, loadPalette } from '../services/paletteService'
 
@@ -23,6 +24,20 @@ const currentBrand = computed(
 
 const availableSets = computed(() =>
   currentBrand.value.sets.filter((s) => isPaletteAvailable(s)),
+)
+
+const brandOptions = computed(() =>
+  PALETTE_BRANDS.map((brand) => ({
+    key: brand.id,
+    label: brand.name,
+  })),
+)
+
+const setOptions = computed(() =>
+  currentBrand.value.sets.map((set) => ({
+    key: set.id,
+    label: `${set.label}${isPaletteAvailable(set) ? '' : '（待支持）'}`,
+  })),
 )
 
 watch(
@@ -60,24 +75,22 @@ async function onSetChange() {
 </script>
 
 <template>
-  <div class="palette-selector variant-pixel" :class="{ compact, embedded }">
+  <div class="palette-selector" :class="{ compact, embedded }">
     <label v-if="!compact" class="selector-label">拼豆色号</label>
     <div class="selector-row">
-      <select v-model="brandId" class="selector-input" :disabled="loading">
-        <option v-for="brand in PALETTE_BRANDS" :key="brand.id" :value="brand.id">
-          {{ brand.name }}
-        </option>
-      </select>
-      <select
+      <Select
+        v-model="brandId"
+        :options="brandOptions"
+        :disabled="loading"
+        placeholder="品牌"
+      />
+      <Select
         v-model="setId"
-        class="selector-input"
+        :options="setOptions"
         :disabled="loading || !availableSets.length"
+        placeholder="色卡"
         @change="onSetChange"
-      >
-        <option v-for="set in currentBrand.sets" :key="set.id" :value="set.id" :disabled="!isPaletteAvailable(set)">
-          {{ set.label }}{{ isPaletteAvailable(set) ? '' : '（待支持）' }}
-        </option>
-      </select>
+      />
     </div>
     <p v-if="!compact" class="selector-hint">{{ activeLabel }} · {{ loading ? '加载中…' : '分析时将匹配此色卡' }}</p>
   </div>
@@ -91,60 +104,24 @@ async function onSetChange() {
 }
 
 .selector-label {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  color: #606266;
+  color: #725d42;
 }
 
 .selector-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 6px;
-}
-
-.selector-input {
-  width: 100%;
-  min-width: 0;
-  height: 32px;
-  padding: 0 8px;
-  font-size: 12px;
-  font-weight: 600;
-  border: 1px solid #dcdfe6;
-  border-radius: 6px;
-  background: #fff;
-  color: #303133;
-}
-
-.selector-input:disabled {
-  opacity: 0.6;
+  gap: 8px;
 }
 
 .selector-hint {
   margin: 0;
-  font-size: 10px;
-  color: #909399;
+  font-size: 11px;
+  color: var(--sd-text-muted);
 }
 
 .palette-selector.embedded {
   gap: 4px;
-}
-
-.palette-selector.embedded .selector-input {
-  height: 28px;
-  font-size: 11px;
-  padding: 0 6px;
-}
-
-.variant-pixel .selector-label,
-.variant-pixel .selector-hint {
-  color: var(--sd-text-muted, #7a6a52);
-}
-
-.variant-pixel .selector-input {
-  border: 2px solid var(--sd-border-light, #c4a882);
-  border-radius: 0;
-  background: var(--sd-surface, #fff8ee);
-  color: var(--sd-text, #3e2723);
-  box-shadow: 2px 2px 0 0 var(--sd-shadow, #5c4033);
 }
 </style>

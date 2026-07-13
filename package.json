@@ -11,7 +11,6 @@
     "palettes": "node scripts/build-palettes.mjs --force"
   },
   "dependencies": {
-    "@pixelium/web-vue": "^0.1.5",
     "animal-island-vue": "^0.2.1",
     "fast-pixelizer": "^1.3.8",
     "vue": "^3.5.39"

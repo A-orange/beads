@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Badge } from '@pixelium/web-vue/es'
+import IslandTag from './IslandTag.vue'
 
 const props = defineProps<{
   current: number
@@ -16,7 +16,7 @@ const progress = computed(() => ((props.current + 1) / props.steps.length) * 100
   <div class="step-header" :class="{ framed }">
     <div class="step-meta">
       <span class="step-counter">STEP {{ current + 1 }}/{{ steps.length }}</span>
-      <Badge :value="`${current + 1}`" theme="primary" />
+      <IslandTag color="app-teal">{{ current + 1 }}</IslandTag>
     </div>
 
     <div class="step-track sd-inset">
@@ -55,12 +55,12 @@ const progress = computed(() => ((props.current + 1) / props.steps.length) * 100
 
 .step-header.framed {
   margin: 0;
-  padding: 10px 12px;
+  padding: 10px 8px;
   border: none;
   border-radius: 0;
   box-shadow: none;
-  border-bottom: 1px dashed var(--sd-border-light);
-  background: var(--sd-surface);
+  border-bottom: 1px dashed rgba(114, 93, 66, 0.25);
+  background: transparent;
 }
 
 .step-meta {
@@ -91,7 +91,7 @@ const progress = computed(() => ((props.current + 1) / props.steps.length) * 100
   left: 0;
   top: 0;
   bottom: 0;
-  background: rgba(95, 160, 68, 0.15);
+  background: rgba(25, 200, 185, 0.12);
   transition: width 0.2s steps(4);
   pointer-events: none;
 }
@@ -118,7 +118,7 @@ const progress = computed(() => ((props.current + 1) / props.steps.length) * 100
   background: var(--px-surface);
   color: var(--px-text-muted);
   border: 2px solid var(--px-border);
-  box-shadow: 2px 2px 0 0 var(--px-shadow);
+  border-radius: 50%;
   transition: background 0.15s, color 0.15s;
 }
 

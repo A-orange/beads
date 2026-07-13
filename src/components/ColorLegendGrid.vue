@@ -11,6 +11,8 @@ const props = defineProps<{
   backgroundColors?: Set<string>
   /** 嵌入图纸文档时展示全部色块，不单独滚动 */
   embedded?: boolean
+  /** 放在抽奖票根区域时的样式 */
+  lottery?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -56,7 +58,7 @@ function onChipClick(item: ColorUsage) {
 </script>
 
 <template>
-  <section class="color-legend" :class="{ embedded }">
+  <section class="color-legend" :class="{ embedded, lottery }">
     <div class="legend-grid">
       <button
         v-for="item in colorUsages"
@@ -90,6 +92,29 @@ function onChipClick(item: ColorUsage) {
   padding: 4px 10px 12px;
   background: transparent;
   border: none;
+}
+
+.color-legend.lottery {
+  padding: 0;
+  background: transparent;
+  border: none;
+}
+
+.color-legend.lottery .legend-chip {
+  border-radius: 999px;
+  border: 1.5px solid rgba(114, 93, 66, 0.18);
+  box-shadow: none;
+  min-height: 26px;
+  font-weight: 700;
+}
+
+.color-legend.lottery .legend-chip:active {
+  transform: translateY(-1px);
+}
+
+.color-legend.lottery .chip-code,
+.color-legend.lottery .chip-count {
+  font-family: var(--sd-font-body, Nunito, 'Noto Sans SC', sans-serif);
 }
 
 .legend-grid {
